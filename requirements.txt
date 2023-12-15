@@ -5,3 +5,7 @@ scikit-learn
 scipy 
 himalaya
 pandas
+gensim
+fasttext
+h5py
+tqdm

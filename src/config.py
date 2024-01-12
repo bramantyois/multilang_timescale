@@ -38,6 +38,8 @@ trs_path = os.path.join(fmri_path, "trfiles")
 trs_en_path = os.path.join(trs_path, "trfiles_en")
 trs_zh_path = os.path.join(trs_path, "trfiles_zh")
 
-model_save_path = "/media/data/dataset/timescale/model_save"
-stats_save_path = "/media/data/dataset/timescale/stats"
+model_save_path = "/media/data/dataset/timescale/models"
+weights_save_path = os.path.join(model_save_path, "weights")
+hyperparams_save_path = os.path.join(model_save_path, "hyperparams")
+stats_save_path = os.path.join(model_save_path, "stats")
 

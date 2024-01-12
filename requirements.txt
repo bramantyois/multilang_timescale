@@ -9,3 +9,5 @@ gensim
 fasttext
 h5py
 tqdm
+voxelwise_tutorials
+himalaya

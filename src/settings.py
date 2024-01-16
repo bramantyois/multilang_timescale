@@ -2,22 +2,15 @@ from typing import List, Optional, Literal
 
 from pydantic import BaseSettings
 
+from .config import train_stories, test_stories, timescales
 
-class FeatureSet(BaseSettings):
-    name: str
-    path: str
-    description: Optional[str] = None
+# class FeatureSet(BaseSettings):
+#     name: str
+#     path: str
+#     description: Optional[str] = None
 
-class TimescaleFeatureSet(FeatureSet):
-    timescale: Literal[
-        "2_4_words",
-        "4_8_words",
-        "8_16_words",
-        "16_32_words",
-        "32_64_words",
-        "64_128_words",
-        "128_256_words",
-        "256+ words",] = "2_4_words"
+# class TimescaleFeatureSet(FeatureSet):
+#     timescale: Literal[] = "2_4_words"
         
 class TrainerConfig(BaseSettings):
     # subject related
@@ -33,13 +26,15 @@ class TrainerConfig(BaseSettings):
     test_stories: List[str]
     
     # feature related
-    feature_sets: List[FeatureSet]
-    
+    timescale: Literal[timescales]
+    lm_feature_path: str
+    sensory_level_feature_path: str
+        
     # training related
     kfolds: int
-    alpha_num: int
     alpha_min: float
     alpha_max: float 
+    alpha_num: int
     feature_delay: int = 4
     
     # backend related
@@ -48,4 +43,5 @@ class TrainerConfig(BaseSettings):
     # output related
     weights_save_path: str
     hyperparams_save_path: str
+    
     

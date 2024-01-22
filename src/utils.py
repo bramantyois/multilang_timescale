@@ -100,7 +100,7 @@ def compute_timescale_crosscorrelation(feature_set, periods, agg_method="mean"):
     crosscorr : np.ndarray
         Cross-correlation of the PSD of the feature set for the given timescale.
     """
-    
+
     # aggregating over all features
     features = []
     for p in periods:
@@ -122,6 +122,7 @@ def compute_timescale_crosscorrelation(feature_set, periods, agg_method="mean"):
 
 
 # Below are codes taken from git_address
+
 
 # Visualizing on cortical surfaces using mapper files
 def load_sparse_array(fname, varname):

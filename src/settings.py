@@ -45,7 +45,7 @@ class TrainerConfig(BaseSettings):
     solver: str = "random_search"
 
     # re-fit related
-    use_fitted_alphas: bool = False
+    use_fitted_alphas: bool = True
     use_fitted_deltas: bool = True
 
     # mask

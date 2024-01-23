@@ -287,10 +287,9 @@ class Trainer:
         # save hyperparams
         deltas = pipeline[-1].deltas_.cpu().numpy()
         best_alphas = pipeline[-1].best_alphas_.cpu().numpy()
-
         np.savez(hyperparams_fn, deltas=deltas, best_alphas=best_alphas)
 
-    def refit_and_evaluate(self, trainer_config: TrainerConfig, force_cpu: bool = True):
+    def refit_and_evaluate(self, trainer_config: TrainerConfig, force_cpu: bool = False):
         if force_cpu:
             backend = set_backend("numpy", on_error="warn")
         else:
@@ -321,6 +320,8 @@ class Trainer:
             alpha=best_alphas,
             deltas=deltas,
             kernels="precomputed",
+            solver="conjugate_gradient",
+            solver_params={'n_targets_batch':trainer_config.n_targets_batch_refit},
         )
 
         pipeline = make_pipeline(columnn_kernelizer, model, verbose=False)

@@ -12,7 +12,7 @@ from pydantic import BaseSettings
 #     timescale: Literal[] = "2_4_words"
 
 class FeatureConfig(BaseSettings):
-    timescale: str = "2_4_words"
+    timescale: List[str] = ["2_4_words"]
 
     # lm feature
     lm_feature_path: str = ""
@@ -38,9 +38,9 @@ class TrainerConfig(BaseSettings):
     feature_delay: int = 4
     
     # multi kernel related
-    n_targets_batch: int = 1000
-    n_alphas_batch: int = 10
-    n_targets_batch_refit: int = 500
+    n_targets_batch: int = 512
+    n_alphas_batch: int = 8
+    n_targets_batch_refit: int = 512
     n_iter: int = 1000
     solver: str = "random_search"
 
@@ -76,3 +76,6 @@ class SubjectConfig(BaseSettings):
 
     # modality related
     task: str = "reading"
+    
+    # mask related
+    ev_threshold: float = 0.001

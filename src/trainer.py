@@ -5,12 +5,14 @@ import time
 import numpy as np
 from scipy.stats import zscore
 
+import torch
+
 from himalaya.backend import set_backend
 from himalaya.kernel_ridge import (
     Kernelizer,
     ColumnKernelizer,
     MultipleKernelRidgeCV,
-    WeightedKernelRidge
+    WeightedKernelRidge,
 )
 from himalaya.scoring import r2_score_split, correlation_score_split
 
@@ -38,7 +40,7 @@ class Trainer:
 
         self.prepare_data()
         self.prepare_features()
-        
+
         set_config(assume_finite=True)
 
     def prepare_data(self):
@@ -63,7 +65,7 @@ class Trainer:
 
         # computing ev before masking
         ev = explainable_variance(test_data["story_11"])
-        self.mask = ev > 0.1
+        self.mask = ev > self.sub_config.ev_threshold
 
         test_data = zscore(
             np.mean(test_data["story_11"], axis=0)[
@@ -82,27 +84,25 @@ class Trainer:
         lm_feature_train_test = np.load(
             self.feature_config.lm_feature_path, allow_pickle=True
         )
-        lm_features = lm_feature_train_test["train"].tolist()[
-            self.feature_config.timescale
-        ]
-        train_features.append(
-            {
-                "name": "lm",
-                "size": lm_features.shape[1],
-                "feature": np.nan_to_num(lm_features),
-            }
-        )
-        ### test
-        lm_features = lm_feature_train_test["test"].tolist()[
-            self.feature_config.timescale
-        ]
-        test_features.append(
-            {
-                "name": "lm",
-                "size": lm_features.shape[1],
-                "feature": np.nan_to_num(lm_features),
-            }
-        )
+
+        for t in self.feature_config.timescale:
+            lm_features = lm_feature_train_test["train"].tolist()[t]
+            train_features.append(
+                {
+                    "name": f"lm_{t}",
+                    "size": lm_features.shape[1],
+                    "feature": np.nan_to_num(lm_features),
+                }
+            )
+            ## test
+            lm_features = lm_feature_train_test["test"].tolist()[t]
+            test_features.append(
+                {
+                    "name": f"lm_{t}",
+                    "size": lm_features.shape[1],
+                    "feature": np.nan_to_num(lm_features),
+                }
+            )
 
         # sensory-level features
         ## train
@@ -289,7 +289,14 @@ class Trainer:
         best_alphas = pipeline[-1].best_alphas_.cpu().numpy()
         np.savez(hyperparams_fn, deltas=deltas, best_alphas=best_alphas)
 
-    def refit_and_evaluate(self, trainer_config: TrainerConfig, force_cpu: bool = False):
+        # clear cuda memory
+        if trainer_config.backend == "torch_cuda":
+            del pipeline
+            torch.cuda.empty_cache()
+
+    def refit_and_evaluate(
+        self, trainer_config: TrainerConfig, force_cpu: bool = False
+    ):
         if force_cpu:
             backend = set_backend("numpy", on_error="warn")
         else:
@@ -321,7 +328,7 @@ class Trainer:
             deltas=deltas,
             kernels="precomputed",
             solver="conjugate_gradient",
-            solver_params={'n_targets_batch':trainer_config.n_targets_batch_refit},
+            solver_params={"n_targets_batch": trainer_config.n_targets_batch_refit},
         )
 
         pipeline = make_pipeline(columnn_kernelizer, model, verbose=False)
@@ -342,12 +349,32 @@ class Trainer:
         pipeline.fit(train_feature, train_data)
 
         # score on train
-        train_pred_split = pipeline.predict(train_feature, split=True)
+        ## predict in batches
+        def predict_in_batches(
+            model, X, batch_size=trainer_config.n_targets_batch_refit
+        ):
+            n_samples = X.shape[0]
+            n_batches = int(np.ceil(n_samples / batch_size))
+            y_pred = []
+            for batch_idx in range(n_batches):
+                start = batch_idx * batch_size
+                end = (batch_idx + 1) * batch_size
+                y_pred_batch = model.predict(X[start:end], split=True)
+                y_pred_batch = backend.to_numpy(y_pred_batch)
+                y_pred.append(y_pred_batch)
+            y_pred = np.concatenate(y_pred, axis=1)
+            return y_pred
+
+        train_pred_split = predict_in_batches(pipeline, train_feature)
+        test_pred_split = predict_in_batches(pipeline, test_feature)
+
+        # now do it in cpu
+        backend = set_backend("numpy", on_error="warn")
+
         train_r2_score_mask = r2_score_split(train_data, train_pred_split)
         train_r_score_mask = correlation_score_split(train_data, train_pred_split)
 
         # score on test
-        test_pred_split = pipeline.predict(test_feature, split=True)
         test_r2_score_mask = r2_score_split(test_data, test_pred_split)
         test_r_score_mask = correlation_score_split(test_data, test_pred_split)
 
@@ -389,6 +416,11 @@ class Trainer:
             test_r_split_scores=test_r_split_scores,
         )
 
+        # clear cuda memory
+        if trainer_config.backend == "torch_cuda":
+            del pipeline
+            torch.cuda.empty_cache()
+
     def plot(
         self,
         trainer_config: TrainerConfig,
@@ -418,7 +450,7 @@ class Trainer:
             voxels=scores[feature_index],
             mapper_file=self.sub_config.sub_fmri_mapper_path,
             vmin=0,
-            vmax=0.2,
+            vmax=0.5,
         )
         plt.show()
 
@@ -427,6 +459,7 @@ class Trainer:
         trainer_config: TrainerConfig,
         feature_indices: list = [0, 1],
         is_corr: bool = False,
+        is_train: bool = False,
     ):
         # load statfile
         stat_fn = os.path.join(
@@ -451,9 +484,9 @@ class Trainer:
             voxels_2=scores[feature_indices[1]],
             mapper_file=self.sub_config.sub_fmri_mapper_path,
             vmin=0,
-            vmax=0.2,
+            vmax=0.5,
             vmin2=0,
-            vmax2=0.2,
+            vmax2=0.5,
             label_1=self.train_feature_info[feature_indices[0]]["name"],
             label_2=self.train_feature_info[feature_indices[1]]["name"],
         )

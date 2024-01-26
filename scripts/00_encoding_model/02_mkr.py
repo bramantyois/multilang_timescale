@@ -31,13 +31,13 @@ feature_config_paths = [
 
 sub_config_paths = [
     ".temp/config/subject/subject-07-reading.json",
-    ".temp/config/subject/subject-07-reading-shorttime.json",
+    ".temp/config/subject/subject-07-listening.json",
 ]
 
 
 train_config_paths = [
-    ".temp/config/train/trainer_config_shorttime.json",
-    # ".temp/config/train/trainer_config.json",
+    #".temp/config/train/trainer_config_shorttime.json",
+    ".temp/config/train/trainer_config.json",
 ]
 
 

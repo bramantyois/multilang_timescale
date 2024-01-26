@@ -11,4 +11,5 @@ h5py
 tqdm
 voxelwise_tutorials
 himalaya
+nvidia-ml-py3
 pydantic==1.8.2

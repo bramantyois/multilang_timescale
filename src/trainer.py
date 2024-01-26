@@ -1,6 +1,9 @@
 import os
-
 import time
+import uuid
+import json
+
+from typing import Optional
 
 import numpy as np
 from scipy.stats import zscore
@@ -30,20 +33,83 @@ from voxelwise_tutorials.viz import (
 import matplotlib.pyplot as plt
 
 from src.utils import load_dict
-from src.settings import TrainerConfig, SubjectConfig, FeatureConfig
+from src.settings import TrainerConfig, SubjectConfig, FeatureConfig, ResultConfig
 
 
 class Trainer:
-    def __init__(self, sub_config: SubjectConfig, feature_config: FeatureConfig):
-        self.sub_config = sub_config
-        self.feature_config = feature_config
+    def __init__(
+        self,
+        sub_config_json: Optional[str] = None,
+        feature_config_json: Optional[str] = None,
+        trainer_config_json: Optional[str] = None,
+        result_config_json: str = None,
+    ):
+        if result_config_json is not None:
+            temp = self._load_json(result_config_json)
+            self.result_config = ResultConfig(**temp)
 
-        self.prepare_data()
-        self.prepare_features()
+            sub_config_json = self.result_config.subject_config_path
+            feature_config_json = self.result_config.feature_config_path
+            trainer_config_json = self.result_config.trainer_config_path
+
+        temp = self._load_json(sub_config_json)
+        self.sub_config = SubjectConfig(**temp)
+
+        temp = self._load_json(feature_config_json)
+        self.feature_config = FeatureConfig(**temp)
+
+        temp = self._load_json(trainer_config_json)
+        self.trainer_config = TrainerConfig(**temp)
+
+        self._generate_output_config(
+            sub_config_json, feature_config_json, trainer_config_json
+        )
+
+        self._prepare_data()
+        self._prepare_features()
 
         set_config(assume_finite=True)
 
-    def prepare_data(self):
+    def _load_json(self, path):
+        with open(path) as f:
+            return json.load(f)
+
+    def _generate_output_config(
+        self, sub_config_json: str, feature_config_json: str, trainer_config_json: str
+    ):
+        id = str(uuid.uuid4())
+
+        result_dir = os.path.join(self.trainer_config.result_save_dir, id)
+
+        result_config = ResultConfig()
+        result_config.subject_config_path = sub_config_json
+        result_config.feature_config_path = feature_config_json
+        result_config.trainer_config_path = trainer_config_json
+
+        result_config.result_dir = result_dir
+        result_config.hyperparam_path = os.path.join(result_dir, "hyperparams.npz")
+        result_config.stats_path = os.path.join(result_dir, "stats.npz")
+        result_config.plot_dir = os.path.join(result_dir, "plots")
+
+        # creating dirs
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
+        if not os.path.exists(result_config.plot_dir):
+            os.makedirs(result_config.plot_dir)
+
+        # to json
+        if not os.path.exists(self.trainer_config.result_meta_save_dir):
+            os.makedirs(self.trainer_config.result_meta_save_dir)
+        result_config_json = os.path.join(
+            self.trainer_config.result_meta_save_dir, f"{id}.json"
+        )
+
+        with open(result_config_json, "w") as f:
+            json.dump(result_config.__dict__, f, indent=4)
+
+        self.result_config = result_config
+
+    def _prepare_data(self):
         train_data = load_dict(self.sub_config.sub_fmri_train_path)
         test_data = load_dict(self.sub_config.sub_fmri_test_path)
 
@@ -75,7 +141,7 @@ class Trainer:
         )
         self.test_data = np.nan_to_num(test_data)
 
-    def prepare_features(self):
+    def _prepare_features(self):
         train_features = []
         test_features = []
 
@@ -183,7 +249,7 @@ class Trainer:
         self.train_feature = np.hstack([f["feature"] for f in train_features])
         self.test_feature = np.hstack([f["feature"] for f in test_features])
 
-        # delays = np.arange(1, trainer_config.feature_delay + 1)
+        # delays = np.arange(1, self.trainer_config.feature_delay + 1)
         # self.train_feature = make_delayed(train_feature, delays)
 
         assert (
@@ -227,44 +293,44 @@ class Trainer:
         ]
         return ColumnKernelizer(kernelizers_tuples)
 
-    def prepare_training_pipeline(self, trainer_config: TrainerConfig):
+    def prepare_training_pipeline(self):
         # preprocess
         columnn_kernelizer = self.get_kernelizer()
         # model
         solver_params = dict(
-            n_iter=trainer_config.n_iter,
+            n_iter=self.trainer_config.n_iter,
             alphas=np.logspace(
-                trainer_config.alpha_min,
-                trainer_config.alpha_max,
-                trainer_config.alpha_num,
+                self.trainer_config.alpha_min,
+                self.trainer_config.alpha_max,
+                self.trainer_config.alpha_num,
             ),
-            n_targets_batch=trainer_config.n_targets_batch,
-            n_alphas_batch=trainer_config.n_alphas_batch,
-            n_targets_batch_refit=trainer_config.n_targets_batch_refit,
+            n_targets_batch=self.trainer_config.n_targets_batch,
+            n_alphas_batch=self.trainer_config.n_alphas_batch,
+            n_targets_batch_refit=self.trainer_config.n_targets_batch_refit,
         )
 
         mkr_model = MultipleKernelRidgeCV(
             kernels="precomputed",
-            solver=trainer_config.solver,
+            solver=self.trainer_config.solver,
             solver_params=solver_params,
-            cv=trainer_config.kfolds,
+            cv=self.trainer_config.kfolds,
         )
 
         return make_pipeline(columnn_kernelizer, mkr_model, verbose=False)
 
-    def train(self, trainer_config: TrainerConfig, force_cpu: bool = False):
+    def train(self, force_cpu: bool = False):
         if force_cpu:
             set_backend("numpy", on_error="warn")
         else:
-            set_backend(trainer_config.backend, on_error="warn")
+            set_backend(self.trainer_config.backend, on_error="warn")
 
-        pipeline = self.prepare_training_pipeline(trainer_config)
+        pipeline = self.prepare_training_pipeline()
 
         # casting
         train_feature = self.train_feature.astype("float32")
         train_data = self.train_data.astype("float32")
 
-        if trainer_config.fit_on_mask:
+        if self.trainer_config.fit_on_mask:
             train_data = train_data[:, self.mask]
             # print("using mask size of {train_data.shape}")
 
@@ -276,47 +342,39 @@ class Trainer:
 
         print(f"training took {time.time() - start} seconds")
 
-        if not os.path.exists(trainer_config.hyperparams_save_dir):
-            os.makedirs(trainer_config.hyperparams_save_dir)
-
-        hyperparams_fn = os.path.join(
-            trainer_config.hyperparams_save_dir,
-            f"{self.sub_config.sub_id}-{self.sub_config.task}-{self.feature_config.timescale}.npz",
-        )
-
         # save hyperparams
         deltas = pipeline[-1].deltas_.cpu().numpy()
         best_alphas = pipeline[-1].best_alphas_.cpu().numpy()
-        np.savez(hyperparams_fn, deltas=deltas, best_alphas=best_alphas)
+        np.savez(
+            self.result_config.hyperparam_path, deltas=deltas, best_alphas=best_alphas
+        )
 
         # clear cuda memory
-        if trainer_config.backend == "torch_cuda":
+        if self.trainer_config.backend == "torch_cuda":
             del pipeline
             torch.cuda.empty_cache()
 
-    def refit_and_evaluate(
-        self, trainer_config: TrainerConfig, force_cpu: bool = False
-    ):
+    def refit_and_evaluate(self, force_cpu: bool = False):
         if force_cpu:
             backend = set_backend("numpy", on_error="warn")
         else:
-            backend = set_backend(trainer_config.backend, on_error="warn")
+            backend = set_backend(self.trainer_config.backend, on_error="warn")
 
         # load hyperparams
         hyperparams_fn = os.path.join(
-            trainer_config.hyperparams_save_dir,
-            f"{self.sub_config.sub_id}-{self.sub_config.task}-{self.feature_config.timescale}.npz",
+            self.result_config.result_dir,
+            f"hyperparams.npz",
         )
 
         hyperparams = np.load(hyperparams_fn)
         deltas = (
             hyperparams["deltas"].astype("float32")
-            if trainer_config.use_fitted_deltas
+            if self.trainer_config.use_fitted_deltas
             else "zeros"
         )
         best_alphas = (
             hyperparams["best_alphas"].astype("float32")
-            if trainer_config.use_fitted_alphas
+            if self.trainer_config.use_fitted_alphas
             else 1
         )
 
@@ -328,7 +386,9 @@ class Trainer:
             deltas=deltas,
             kernels="precomputed",
             solver="conjugate_gradient",
-            solver_params={"n_targets_batch": trainer_config.n_targets_batch_refit},
+            solver_params={
+                "n_targets_batch": self.trainer_config.n_targets_batch_refit
+            },
         )
 
         pipeline = make_pipeline(columnn_kernelizer, model, verbose=False)
@@ -340,7 +400,7 @@ class Trainer:
         test_feature = self.test_feature.astype("float32")
         test_data = self.test_data.astype("float32")
 
-        if trainer_config.fit_on_mask:
+        if self.trainer_config.fit_on_mask:
             train_data = train_data[:, self.mask]
             test_data = test_data[:, self.mask]
             # print("using mask size of {train_data.shape}")
@@ -351,7 +411,7 @@ class Trainer:
         # score on train
         ## predict in batches
         def predict_in_batches(
-            model, X, batch_size=trainer_config.n_targets_batch_refit
+            model, X, batch_size=self.trainer_config.n_targets_batch_refit
         ):
             n_samples = X.shape[0]
             n_batches = int(np.ceil(n_samples / batch_size))
@@ -378,7 +438,7 @@ class Trainer:
         test_r2_score_mask = r2_score_split(test_data, test_pred_split)
         test_r_score_mask = correlation_score_split(test_data, test_pred_split)
 
-        if trainer_config.fit_on_mask:
+        if self.trainer_config.fit_on_mask:
             n_kernels = train_r2_score_mask.shape[0]
             n_voxels = self.test_data.shape[1]
 
@@ -400,16 +460,8 @@ class Trainer:
             test_r_split_scores = test_r_score_mask
 
         # saving stat
-        if not os.path.exists(trainer_config.stats_save_dir):
-            os.makedirs(trainer_config.stats_save_dir)
-
-        stat_fn = os.path.join(
-            trainer_config.stats_save_dir,
-            f"{self.sub_config.sub_id}-{self.sub_config.task}-{self.feature_config.timescale}.npz",
-        )
-
         np.savez_compressed(
-            stat_fn,
+            self.result_config.stats_path,
             train_r2_split_scores=train_r2_split_scores,
             train_r_split_scores=train_r_split_scores,
             test_r2_split_scores=test_r2_split_scores,
@@ -417,24 +469,18 @@ class Trainer:
         )
 
         # clear cuda memory
-        if trainer_config.backend == "torch_cuda":
+        if self.trainer_config.backend == "torch_cuda":
             del pipeline
             torch.cuda.empty_cache()
 
     def plot(
         self,
-        trainer_config: TrainerConfig,
         feature_index: int = 0,
         is_corr: bool = False,
         is_train: bool = False,
     ):
         # load statfile
-        stat_fn = os.path.join(
-            trainer_config.stats_save_dir,
-            f"{self.sub_config.sub_id}-{self.sub_config.task}-{self.feature_config.timescale}.npz",
-        )
-
-        stat = np.load(stat_fn)
+        stat = np.load(self.result_config.stats_path)
 
         data_mode = "test"
         if is_train:
@@ -446,24 +492,27 @@ class Trainer:
 
         scores = stat[f"{data_mode}_{score_mode}_split_scores"]
 
-        ax = plot_flatmap_from_mapper(
+        fig, ax = plt.subplots(figsize=(10, 10))
+
+        plot_flatmap_from_mapper(
             voxels=scores[feature_index],
             mapper_file=self.sub_config.sub_fmri_mapper_path,
             vmin=0,
             vmax=0.5,
+            ax=ax,
         )
+
         plt.show()
 
     def plot2d(
         self,
-        trainer_config: TrainerConfig,
         feature_indices: list = [0, 1],
         is_corr: bool = False,
         is_train: bool = False,
     ):
         # load statfile
         stat_fn = os.path.join(
-            trainer_config.stats_save_dir,
+            self.result_config.stat_dir,
             f"{self.sub_config.sub_id}-{self.sub_config.task}-{self.feature_config.timescale}.npz",
         )
 
@@ -479,7 +528,9 @@ class Trainer:
 
         scores = stat[f"{data_mode}_{score_mode}_split_scores"]
 
-        ax = plot_2d_flatmap_from_mapper(
+        fig, ax = plt.subplots(figsize=(10, 10))
+
+        plot_2d_flatmap_from_mapper(
             voxels_1=scores[feature_indices[0]],
             voxels_2=scores[feature_indices[1]],
             mapper_file=self.sub_config.sub_fmri_mapper_path,
@@ -489,5 +540,6 @@ class Trainer:
             vmax2=0.5,
             label_1=self.train_feature_info[feature_indices[0]]["name"],
             label_2=self.train_feature_info[feature_indices[1]]["name"],
+            ax=ax,
         )
         plt.show()

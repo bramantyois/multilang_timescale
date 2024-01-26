@@ -2,19 +2,11 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseSettings
 
-
-# class FeatureSet(BaseSettings):
-#     name: str
-#     path: str
-#     description: Optional[str] = None
-
-# class TimescaleFeatureSet(FeatureSet):
-#     timescale: Literal[] = "2_4_words"
-
 class FeatureConfig(BaseSettings):
     timescale: List[str] = ["2_4_words"]
 
     # lm feature
+    lm_feature_type: str = ""
     lm_feature_path: str = ""
     
     # sensory feature
@@ -55,12 +47,15 @@ class TrainerConfig(BaseSettings):
     backend: Literal["numpy", "torch", "torch_cuda", "cupy"] = "numpy"
 
     # output related
-    #weights_save_dir: str = "./models/weights"
-    hyperparams_save_dir: str = "./models/hyperparams"
-    #model_save_path: str = "./models/model"
+    result_save_dir: str = ".temp/result"
+    result_meta_save_dir: str = ".temp/result_meta"
     
-    ## stats
-    stats_save_dir: str = "./models/stats" 
+    # #weights_save_dir: str = "./models/weights"
+    # hyperparams_save_dir: str = "./models/hyperparams"
+    # #model_save_path: str = "./models/model"
+    
+    # ## stats
+    # stats_save_dir: str = "./models/stats" 
 
 
 class SubjectConfig(BaseSettings):
@@ -78,4 +73,16 @@ class SubjectConfig(BaseSettings):
     task: str = "reading"
     
     # mask related
-    ev_threshold: float = 0.001
+    ev_threshold: float = 1e-9
+
+
+class ResultConfig(BaseSettings):
+    subject_config_path: str = ""
+    feature_config_path: str = ""
+    trainer_config_path: str = ""
+    
+    # output related
+    result_dir: str = ""
+    hyperparam_path: str = ""
+    stats_path: str = ""
+    plot_dir: str = ""  

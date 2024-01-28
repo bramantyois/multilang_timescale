@@ -44,6 +44,7 @@ class Trainer:
         trainer_config_json: Optional[str] = None,
         result_config_json: str = None,
     ):
+        should_create_result_config = True
         if result_config_json is not None:
             temp = self._load_json(result_config_json)
             self.result_config = ResultConfig(**temp)
@@ -52,6 +53,8 @@ class Trainer:
             feature_config_json = self.result_config.feature_config_path
             trainer_config_json = self.result_config.trainer_config_path
 
+            should_create_result_config = False
+            
         temp = self._load_json(sub_config_json)
         self.sub_config = SubjectConfig(**temp)
 
@@ -61,9 +64,10 @@ class Trainer:
         temp = self._load_json(trainer_config_json)
         self.trainer_config = TrainerConfig(**temp)
 
-        self._generate_output_config(
-            sub_config_json, feature_config_json, trainer_config_json
-        )
+        if should_create_result_config:
+            self._generate_output_config(
+                sub_config_json, feature_config_json, trainer_config_json
+            )
 
         self._prepare_data()
         self._prepare_features()

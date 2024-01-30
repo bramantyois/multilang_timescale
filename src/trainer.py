@@ -32,8 +32,9 @@ from voxelwise_tutorials.viz import (
 
 import matplotlib.pyplot as plt
 
-from src.utils import load_dict
+from src.utils import load_dict, compute_timescale_selectivity
 from src.settings import TrainerConfig, SubjectConfig, FeatureConfig, ResultConfig
+from src.config import timescale_ranges, timescales
 
 
 class Trainer:
@@ -248,6 +249,11 @@ class Trainer:
                         "feature": np.nan_to_num(moten_test[f]),
                     }
                 )
+        # add index to feature
+        for i, f in enumerate(train_features):
+            f["index"] = i
+        for i, f in enumerate(test_features):
+            f["index"] = i
 
         # join features
         self.train_feature = np.hstack([f["feature"] for f in train_features])
@@ -327,7 +333,7 @@ class Trainer:
 
     def train(self, force_cpu: bool = False):
         if force_cpu:
-            set_backend("numpy", on_error="warn")
+            set_backend("torch", on_error="warn")
         else:
             set_backend(self.trainer_config.backend, on_error="warn")
 
@@ -361,9 +367,9 @@ class Trainer:
             del pipeline
             torch.cuda.empty_cache()
 
-    def refit_and_evaluate(self, force_cpu: bool = False):
+    def refit_and_evaluate(self, force_cpu: bool = False, return_pred: bool = False):
         if force_cpu:
-            backend = set_backend("numpy", on_error="warn")
+            backend = set_backend("torch", on_error="warn")
         else:
             backend = set_backend(self.trainer_config.backend, on_error="warn")
 
@@ -445,6 +451,13 @@ class Trainer:
         test_r2_score_mask = r2_score_split(test_data, test_pred_split)
         test_r_score_mask = correlation_score_split(test_data, test_pred_split)
 
+        # compute timescale selectivity
+        train_r_timescale_selectivity = compute_timescale_selectivity(train_r_score_mask[0:8])
+        train_r2_timescale_selectivity = compute_timescale_selectivity(train_r2_score_mask[0:8])
+        
+        test_r_timescale_selectivity = compute_timescale_selectivity(test_r_score_mask[0:8])
+        test_r2_timescale_selectivity = compute_timescale_selectivity(test_r2_score_mask[0:8])
+
         if self.trainer_config.fit_on_mask:
             n_kernels = train_r2_score_mask.shape[0]
             n_voxels = self.test_data.shape[1]
@@ -454,31 +467,73 @@ class Trainer:
 
             test_r2_split_scores = np.zeros((n_kernels, n_voxels))
             test_r_split_scores = np.zeros((n_kernels, n_voxels))
-
+            
             train_r2_split_scores[:, self.mask] = backend.to_numpy(train_r2_score_mask)
             train_r_split_scores[:, self.mask] = backend.to_numpy(train_r_score_mask)
 
             test_r2_split_scores[:, self.mask] = backend.to_numpy(test_r2_score_mask)
             test_r_split_scores[:, self.mask] = backend.to_numpy(test_r_score_mask)
+            
+            train_r_selectivity = np.zeros(n_voxels)
+            train_r2_selectivity = np.zeros(n_voxels)
+            
+            test_r_selectivity = np.zeros(n_voxels)
+            test_r2_selectivity = np.zeros(n_voxels)
+            
+            train_r_selectivity[self.mask] = backend.to_numpy(train_r_timescale_selectivity)
+            train_r2_selectivity[self.mask] = backend.to_numpy(train_r2_timescale_selectivity)
+            
+            test_r_selectivity[self.mask] = backend.to_numpy(test_r_timescale_selectivity)
+            test_r2_selectivity[self.mask] = backend.to_numpy(test_r2_timescale_selectivity)
+            
         else:
             train_r2_split_scores = train_r2_score_mask
             train_r_split_scores = train_r_score_mask
             test_r2_split_scores = test_r2_score_mask
             test_r_split_scores = test_r_score_mask
+            
+            train_r2_selectivity=train_r2_timescale_selectivity
+            train_r_selectivity=train_r_timescale_selectivity
+            
+            test_r2_selectivity=test_r2_timescale_selectivity
+            test_r_selectivity=test_r_timescale_selectivity
 
+        # to power of 2
+        train_r2_selectivity = np.power(2, train_r2_selectivity)
+        train_r_selectivity = np.power(2, train_r_selectivity)
+        
+        test_r2_selectivity = np.power(2, test_r2_selectivity)
+        test_r_selectivity = np.power(2, test_r_selectivity)
+        
         # saving stat
         np.savez_compressed(
             self.result_config.stats_path,
+            
             train_r2_split_scores=train_r2_split_scores,
             train_r_split_scores=train_r_split_scores,
+            
             test_r2_split_scores=test_r2_split_scores,
             test_r_split_scores=test_r_split_scores,
+            
+            
+            train_r2_selectivity=train_r2_selectivity,
+            train_r_selectivity=train_r_selectivity,
+            
+            test_r2_selectivity=test_r2_selectivity,
+            test_r_selectivity=test_r_selectivity,
+            
         )
 
         # clear cuda memory
         if self.trainer_config.backend == "torch_cuda":
             del pipeline
             torch.cuda.empty_cache()
+            
+        if return_pred:
+            return train_pred_split, test_pred_split
+
+    def get_scores(self):
+        return np.load(self.result_config.stats_path)
 
     def plot(
         self,

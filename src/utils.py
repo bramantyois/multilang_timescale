@@ -3,7 +3,7 @@ import logging
 
 import h5py
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import scipy.linalg
@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from tqdm import tqdm
+
+from .config import timescales, timescale_ranges
 
 
 # function computing the PSD of a time-series
@@ -119,6 +121,90 @@ def compute_timescale_crosscorrelation(feature_set, periods, agg_method="mean"):
     crosscorr = np.corrcoef(features)
 
     return crosscorr
+
+
+# timescale selectivity
+def compute_timescale_selectivity(timescale_scores: np.ndarray) -> np.ndarray:
+    """
+    Compute the timescale selectivity from scores.
+
+    Parameters
+    ----------
+    timescale_scores : np.ndarray
+        Scores of the timescale selectivity. Shape is (n_timescale, n_voxel).
+
+    Returns
+    -------
+    selectivity : np.ndarray
+        Timescale selectivity. Shape is (n_voxel,).
+    """
+    nz_scores = np.maximum(timescale_scores, 0)
+    score_sum = np.sum(nz_scores, axis=0)
+
+    normalized_scores = np.nan_to_num(nz_scores / score_sum)
+
+    mid_ranges = mid_ranges = np.array(
+        [np.mean(timescale_ranges[key]) for key in timescales]
+    )
+    mid_ranges = np.log2(mid_ranges)
+
+    weighted_scores = np.stack(
+        [
+            normalized_scores[i,] * mid_ranges[i]
+            for i in range(normalized_scores.shape[0])
+        ]
+    )
+
+    return weighted_scores.sum(axis=0)
+
+
+# permutation test
+def permutation_test(
+    targets: np.ndarray,
+    predictions: np.ndarray,
+    score_func: callable,
+    num_permutations: int = 1000,
+    permutation_block_size: int = 10,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute the p-values of the given predictions using a permutation test.
+
+    Parameters
+    ----------
+    targets : np.ndarray
+        Ground truth.
+    predictions : np.ndarray
+        Predicted values.
+    score_func : callable
+        Callable function to compute the score.
+    num_permutations : int, optional
+        Number of permutations, by default 1000
+    permutation_block_size : int, optional
+        Block size, intended to keep correlation high, by default 10
+
+    Returns
+    -------
+    pvalues : np.ndarray
+        p-values.
+    true_scores : np.ndarray
+        True scores.
+    """
+
+    true_scores = score_func(targets, predictions)
+    
+    num_TRs = predictions.shape[0]
+    blocks = np.array_split(np.arange(num_TRs), int(num_TRs / permutation_block_size))
+    
+    num_get_true_score = np.zeros(true_scores.shape)
+
+    for permutation_num in tqdm(range(num_permutations)):
+        _ = np.random.shuffle(blocks)
+        permutation_order = np.concatenate(blocks)
+        shuffled_pred = predictions[permutation_order]
+        shuffled_scores = score_func(targets, shuffled_pred)
+        num_get_true_score[shuffled_scores >= true_scores] += 1
+    pvalues = num_get_true_score / num_permutations
+    
+    return pvalues, true_scores
 
 
 # Below are codes taken from git_address

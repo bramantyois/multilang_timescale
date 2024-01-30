@@ -43,6 +43,17 @@ timescales = [
     "256+ words",
 ]
 
+timescale_ranges= {
+    "2_4_words": [2,4],
+    "4_8_words": [4,8],
+    "8_16_words": [8,16],
+    "16_32_words": [16,32],
+    "32_64_words": [32,64],
+    "64_128_words": [64,128],
+    "128_256_words": [128,256],
+    "256+ words": [256,512]
+}
+
 # # data directories
 # feature_sets_path = "/media/data/dataset/timescale/feature_sets/"
 # feature_sets_en_path = os.path.join(feature_sets_path, "en")

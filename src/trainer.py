@@ -54,7 +54,7 @@ class Trainer:
             trainer_config_json = self.result_config.trainer_config_path
 
             should_create_result_config = False
-            
+
         temp = self._load_json(sub_config_json)
         self.sub_config = SubjectConfig(**temp)
 
@@ -276,8 +276,11 @@ class Trainer:
 
     def get_kernelizer(self):
         preprocess_pipeline = make_pipeline(
-            StandardScaler(with_mean=True, with_std=False),
-            Delayer(delays=[1, 2, 3, 4]),
+            StandardScaler(
+                with_mean=self.feature_config.zscore_use_mean,
+                with_std=self.feature_config.zscore_use_std,
+            ),
+            Delayer(delays=np.arange(1, self.trainer_config.feature_delay + 1)),
             Kernelizer(kernel="linear"),
         )
 

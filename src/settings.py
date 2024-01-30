@@ -19,6 +19,10 @@ class FeatureConfig(BaseSettings):
     # motion energy feature
     motion_energy_feature_paths: Optional[str] = None
     motion_energy_features: Optional[List[str]] = ["0", "1", "2", "3", "4", "5", "6", "7"]
+    
+    # preprocessing related
+    zscore_use_mean: bool = True
+    zscore_use_std: bool = True
 
 
 class TrainerConfig(BaseSettings):

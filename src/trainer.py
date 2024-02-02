@@ -425,6 +425,7 @@ class Trainer:
         # score on train
         ## predict in batches
         print("predicting in batches...")
+
         def predict_in_batches(
             model, X, batch_size=self.trainer_config.n_targets_batch_refit, split=True
         ):
@@ -443,7 +444,7 @@ class Trainer:
                 y_pred = np.concatenate(y_pred)
             return y_pred
 
-        train_pred_split = predict_in_batches(pipeline, train_feature)
+        #train_pred_split = predict_in_batches(pipeline, train_feature)
         test_pred_split = predict_in_batches(pipeline, test_feature)
 
         # unsplitted_train_pred = predict_in_batches(pipeline, train_feature, split=False)
@@ -453,29 +454,29 @@ class Trainer:
         print("computing scores...")
         backend = set_backend("numpy", on_error="warn")
 
-        train_r2_score_mask = r2_score_split(train_data, train_pred_split)
-        train_r_score_mask = correlation_score_split(train_data, train_pred_split)
+        #train_r2_score_mask = r2_score_split(train_data, train_pred_split)
+        #train_r_score_mask = correlation_score_split(train_data, train_pred_split)
 
         # score on test
         test_r2_score_mask = r2_score_split(test_data, test_pred_split)
         test_r_score_mask = correlation_score_split(test_data, test_pred_split)
 
         # do permutation test
-        print("computing permutation test...") 
-        # train_p_values_r_mask = permutation_test(train_data, train_pred_split, score_func=correlation_score_split)  
-        # test_p_values_r_mask = permutation_test(test_data, test_pred_split, score_func=correlation_score_split)
-        
+        print("computing permutation test...")
+        # train_p_values_r_mask = permutation_test(train_data, train_pred_split, score_func=correlation_score_split)
+
         # train_p_values_r2_mask = permutation_test(train_data, train_pred_split, score_func=r2_score_split)
-        # test_p_values_r2_mask = permutation_test(test_data, test_pred_split, score_func=r2_score_split)
+        test_p_values_r_mask = permutation_test(test_data, test_pred_split, score_func=correlation_score_split)
+        test_p_values_r2_mask = permutation_test(test_data, test_pred_split, score_func=r2_score_split)
 
         # compute timescale selectivity
         print("computing timescale selectivity...")
-        train_r_timescale_selectivity = compute_timescale_selectivity(
-            train_r_score_mask[0:8]
-        )
-        train_r2_timescale_selectivity = compute_timescale_selectivity(
-            train_r2_score_mask[0:8]
-        )
+        # train_r_timescale_selectivity = compute_timescale_selectivity(
+        #     train_r_score_mask[0:8]
+        # )
+        # train_r2_timescale_selectivity = compute_timescale_selectivity(
+        #     train_r2_score_mask[0:8]
+        # )
 
         test_r_timescale_selectivity = compute_timescale_selectivity(
             test_r_score_mask[0:8]
@@ -488,30 +489,30 @@ class Trainer:
             n_kernels = train_r2_score_mask.shape[0]
             n_voxels = self.test_data.shape[1]
 
-            train_r2_split_scores = np.zeros((n_kernels, n_voxels))
-            train_r_split_scores = np.zeros((n_kernels, n_voxels))
+            # train_r2_split_scores = np.zeros((n_kernels, n_voxels))
+            # train_r_split_scores = np.zeros((n_kernels, n_voxels))
 
             test_r2_split_scores = np.zeros((n_kernels, n_voxels))
             test_r_split_scores = np.zeros((n_kernels, n_voxels))
 
-            train_r2_split_scores[:, self.mask] = backend.to_numpy(train_r2_score_mask)
-            train_r_split_scores[:, self.mask] = backend.to_numpy(train_r_score_mask)
+            # train_r2_split_scores[:, self.mask] = backend.to_numpy(train_r2_score_mask)
+            # train_r_split_scores[:, self.mask] = backend.to_numpy(train_r_score_mask)
 
             test_r2_split_scores[:, self.mask] = backend.to_numpy(test_r2_score_mask)
             test_r_split_scores[:, self.mask] = backend.to_numpy(test_r_score_mask)
 
-            train_r_selectivity = np.zeros(n_voxels)
-            train_r2_selectivity = np.zeros(n_voxels)
+            # train_r_selectivity = np.zeros(n_voxels)
+            # train_r2_selectivity = np.zeros(n_voxels)
 
             test_r_selectivity = np.zeros(n_voxels)
             test_r2_selectivity = np.zeros(n_voxels)
 
-            train_r_selectivity[self.mask] = backend.to_numpy(
-                train_r_timescale_selectivity
-            )
-            train_r2_selectivity[self.mask] = backend.to_numpy(
-                train_r2_timescale_selectivity
-            )
+            # train_r_selectivity[self.mask] = backend.to_numpy(
+            #     train_r_timescale_selectivity
+            # )
+            # train_r2_selectivity[self.mask] = backend.to_numpy(
+            #     train_r2_timescale_selectivity
+            # )
 
             test_r_selectivity[self.mask] = backend.to_numpy(
                 test_r_timescale_selectivity
@@ -532,13 +533,14 @@ class Trainer:
             # train_p_values_r[self.mask] = backend.to_numpy(train_p_values_r_mask)
             # test_p_values_r[self.mask] = backend.to_numpy(test_p_values_r_mask)
         else:
-            train_r2_split_scores = train_r2_score_mask
-            train_r_split_scores = train_r_score_mask
+            # train_r2_split_scores = train_r2_score_mask
+            # train_r_split_scores = train_r_score_mask
+            
             test_r2_split_scores = test_r2_score_mask
             test_r_split_scores = test_r_score_mask
 
-            train_r2_selectivity = train_r2_timescale_selectivity
-            train_r_selectivity = train_r_timescale_selectivity
+            # train_r2_selectivity = train_r2_timescale_selectivity
+            # train_r_selectivity = train_r_timescale_selectivity
 
             test_r2_selectivity = test_r2_timescale_selectivity
             test_r_selectivity = test_r_timescale_selectivity
@@ -550,8 +552,8 @@ class Trainer:
             # test_p_values_r = test_p_values_r_mask
 
         # to power of 2
-        train_r2_selectivity = np.power(2, train_r2_selectivity)
-        train_r_selectivity = np.power(2, train_r_selectivity)
+        # train_r2_selectivity = np.power(2, train_r2_selectivity)
+        # train_r_selectivity = np.power(2, train_r_selectivity)
 
         test_r2_selectivity = np.power(2, test_r2_selectivity)
         test_r_selectivity = np.power(2, test_r_selectivity)
@@ -560,12 +562,12 @@ class Trainer:
         print("saving stat...")
         np.savez_compressed(
             self.result_config.stats_path,
-            train_r2_split_scores=train_r2_split_scores,
-            train_r_split_scores=train_r_split_scores,
+            # train_r2_split_scores=train_r2_split_scores,
+            # train_r_split_scores=train_r_split_scores,
             test_r2_split_scores=test_r2_split_scores,
             test_r_split_scores=test_r_split_scores,
-            train_r2_selectivity=train_r2_selectivity,
-            train_r_selectivity=train_r_selectivity,
+            # train_r2_selectivity=train_r2_selectivity,
+            # train_r_selectivity=train_r_selectivity,
             test_r2_selectivity=test_r2_selectivity,
             test_r_selectivity=test_r_selectivity,
             # train_p_values=train_p_values,
@@ -578,7 +580,7 @@ class Trainer:
             torch.cuda.empty_cache()
 
         if return_pred:
-            return train_pred_split, test_pred_split
+            return {"train_pred": train_pred_split, "test_pred": test_pred_split}
 
     def get_scores(self):
         return np.load(self.result_config.stats_path)

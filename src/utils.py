@@ -143,9 +143,7 @@ def compute_timescale_selectivity(timescale_scores: np.ndarray) -> np.ndarray:
 
     normalized_scores = np.nan_to_num(nz_scores / score_sum)
 
-    mid_ranges = np.array(
-        [np.mean(timescale_ranges[key]) for key in timescales]
-    )
+    mid_ranges = np.array([np.mean(timescale_ranges[key]) for key in timescales])
     mid_ranges = np.log2(mid_ranges)
 
     weighted_scores = np.stack(
@@ -165,6 +163,8 @@ def permutation_test(
     score_func: callable,
     num_permutations: int = 1000,
     permutation_block_size: int = 10,
+    initial_seed: int = 0,
+    num_processes: int = 10,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Compute the p-values of the given predictions using a permutation test.
 
@@ -180,6 +180,10 @@ def permutation_test(
         Number of permutations, by default 1000
     permutation_block_size : int, optional
         Block size, intended to keep correlation high, by default 10
+    initial_seed : int, optional
+        Initial random seed, by default 0
+    num_processes : int, optional
+        Number of processes to use, by default 10
 
     Returns
     -------
@@ -190,26 +194,37 @@ def permutation_test(
     """
 
     true_scores = score_func(targets, predictions)
-    
+
     num_TRs = predictions.shape[0]
     blocks = np.array_split(np.arange(num_TRs), int(num_TRs / permutation_block_size))
-    
-    num_get_true_score = np.zeros(true_scores.shape)
 
-    for permutation_num in tqdm(range(num_permutations)):
-        _ = np.random.shuffle(blocks)
-        permutation_order = np.concatenate(blocks)
-        shuffled_pred = predictions[permutation_order]
-        shuffled_scores = score_func(targets, shuffled_pred)
-        num_get_true_score[shuffled_scores >= true_scores] += 1
-    pvalues = num_get_true_score / num_permutations
-    
-    return pvalues, true_scores
+    repeats = num_permutations // num_processes
+
+    np.random.seed(initial_seed)
+    seeds = np.random.randint(0, 1000000, num_processes)
+
+    def single_test(repeats: int = 0, seed: int = 0):
+        np.random.seed(seed)
+        num_get_true_score = np.zeros(true_scores.shape)
+        for i in range(repeats):
+            np.random.shuffle(blocks)
+            permutation_order = np.concatenate(blocks)
+            shuffled_pred = predictions[permutation_order]
+            shuffled_scores = score_func(targets, shuffled_pred)
+            num_get_true_score[shuffled_scores >= true_scores] += 1
+        return num_get_true_score
+
+    with multiprocessing.Pool(num_processes) as pool:
+        num_get_true_scores = pool.starmap(
+            single_test, zip([repeats] * num_processes, seeds)
+        )
+
+    p_values = np.sum(num_get_true_scores, axis=0) / (repeats * num_processes)
+
+    return p_values, true_scores
 
 
 # Below are codes taken from git_address
-
-
 # Visualizing on cortical surfaces using mapper files
 def load_sparse_array(fname, varname):
     """Load a numpy sparse array from an hdf file

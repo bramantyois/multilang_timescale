@@ -143,7 +143,7 @@ def compute_timescale_selectivity(timescale_scores: np.ndarray) -> np.ndarray:
 
     normalized_scores = np.nan_to_num(nz_scores / score_sum)
 
-    mid_ranges = mid_ranges = np.array(
+    mid_ranges = np.array(
         [np.mean(timescale_ranges[key]) for key in timescales]
     )
     mid_ranges = np.log2(mid_ranges)

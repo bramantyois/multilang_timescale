@@ -37,7 +37,8 @@ sub_config_paths = [
 
 train_config_paths = [
     #".temp/config/train/trainer_config_shorttime.json",
-    ".temp/config/train/trainer_config.json",
+    #".temp/config/train/trainer_config.json",
+    ".temp/config/train/trainer_config_no_mask.json",
 ]
 
 

@@ -245,6 +245,77 @@ def permutation_test_mp(
 
     return p_values
 
+# P-Values correction
+def get_bh_invalid_voxels(pvalues: np.ndarray, alpha: float):
+    """  
+    Get invalid voxels using Benjamini-Hochberg procedure.
+    
+    Parameters
+    ----------
+    pvalues : np.ndarray
+        p-values.
+    alpha : float
+        Alpha value.
+        
+    Returns
+    -------
+    np.ndarray
+        Invalid voxels.
+    """
+    num_values = len(pvalues)
+    pvalues_sorted = np.sort(pvalues)
+    max_p = pvalues_sorted[
+        np.argmax(
+            np.where(
+                pvalues_sorted <= ((np.arange(1, num_values + 1) / num_values) * alpha)
+            )
+        )
+    ]
+    return pvalues > max_p
+
+
+def put_values_on_mask(
+    value_to_be_stored: np.ndarray,
+    p_values: np.ndarray,
+    ev_mask: np.ndarray,
+    alpha: float = 0.05,
+    valid_range: Tuple[float, float] = (8,256)
+)-> Tuple[np.ndarray, np.ndarray]:
+    """ 
+    Put voxels values of voxels given masks.
+    
+    Parameters
+    ----------
+    value_to_be_stored : np.ndarray
+        Values to be stored.
+    p_values : np.ndarray
+        p-values.
+    ev_mask : np.ndarray
+        Mask.
+    alpha : float, optional
+        Alpha value, by default 0.05
+    valid_range : Tuple[float, float], optional
+        Valid range of value_to_be_stored, by default (8,256)
+    
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray]
+        Whole voxel and valid voxels.
+    
+    """
+    whole_voxel = np.full(ev_mask.shape, np.nan)
+
+    invalid_p_values = get_bh_invalid_voxels(p_values, alpha)
+
+    valid_values = (value_to_be_stored >= valid_range[0]) & (value_to_be_stored <= valid_range[1])
+    
+    value_to_be_stored[~valid_values] = np.nan
+    value_to_be_stored[invalid_p_values] = np.nan
+
+    whole_voxel[ev_mask] = value_to_be_stored
+    
+    valid_voxels = np.where(~np.isnan(whole_voxel)) 
+    return whole_voxel, valid_voxels
 
 # def permutation_test(
 #     targets: np.ndarray,

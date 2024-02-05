@@ -1,6 +1,7 @@
 import numpy as np
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import PowerNorm, LogNorm
 
 from voxelwise_tutorials.viz import map_voxels_to_flatmap
 from voxelwise_tutorials.viz import _plot_addition_layers
@@ -8,8 +9,7 @@ from voxelwise_tutorials.io import load_hdf5_array
 
 from src.trainer import Trainer
 
-
-def plot_flatmap_from_mapper(
+def plot_flatmap_from_mapper_w_cnorm(
     voxels,
     mapper_file,
     ax=None,
@@ -81,7 +81,9 @@ def plot_flatmap_from_mapper(
     # plot the data
     image = map_voxels_to_flatmap(voxels, mapper_file)
     cimg = ax.imshow(
-        image, aspect="equal", zorder=1, alpha=alpha, cmap=cmap, vmin=vmin, vmax=vmax
+        image, aspect="equal", zorder=1, alpha=alpha, cmap=cmap,
+        #norm=PowerNorm(gamma=0.5, vmin=vmin, vmax=vmax, clip=True),
+        norm=LogNorm(vmin=vmin, vmax=vmax, clip=True), 
     )
 
     if with_colorbar:
@@ -89,7 +91,8 @@ def plot_flatmap_from_mapper(
             cbar = ax.inset_axes(colorbar_location)
         except AttributeError:  # for matplotlib < 3.0
             cbar = ax.figure.add_axes(colorbar_location)
-        ax.figure.colorbar(cimg, cax=cbar, orientation="horizontal")
+        ax.figure.colorbar(cimg, cax=cbar, orientation="horizontal", extend="max")
+        
 
     # plot additional layers if present
     _plot_addition_layers(
@@ -103,32 +106,55 @@ def plot_flatmap_from_mapper(
     return ax
 
 
-def plot_timeline_flatmaps(
-    result_config_json, appendage: str = "Feature Set: BERT", is_corr=True
-):
-    trainer = Trainer(result_config_json=result_config_json)
-    # plotting timescale
-    stat = np.load(trainer.result_config.stats_path)
-    if is_corr:
-        scores = stat["test_r_split_scores"]
-    else:
-        scores = stat["test_r2_split_scores"]
-    scores_timescale = scores[:8]
+def plot_timescale_flatmap(voxels: np.ndarray, mapper_file: str, title: str = "Timescale Selectivity"):
+    fig, ax = plt.subplots(1,1, figsize=(20,10))
+    
+    plot_flatmap_from_mapper_w_cnorm(voxels, mapper_file=mapper_file,vmin=8, vmax=256, cmap="rainbow", ax=ax, with_colorbar=False)
 
-    max_scores = np.argmax(scores_timescale, axis=0)
+    ax.axis("off")
 
-    alpha = trainer.mask.astype(float)
+    # add vertical colorbar
+    cax = fig.add_axes([0.4, 0.9, 0.2, 0.05])
+    cbar = plt.colorbar(ax.images[0], cax=cax, orientation="horizontal")
 
-    ax = plot_flatmap_from_mapper(
-        max_scores, trainer.sub_config.sub_fmri_mapper_path, alpha=alpha, cmap="rainbow"
-    )
+    #cbar = plt.colorbar(ax.images[0], cax=cax)
+    cbar.set_label("Number of Words")
+    cbar.set_ticks([8, 16, 32, 64, 128 , 256])
+    cbar.set_ticklabels([8, 16, 32, 64, 128, 256])
 
-    # plotting mask
-    # plot_flatmap_from_mapper(
-    #     non_mask, trainer.sub_config.sub_fmri_mapper_path,
-    #     cmap="grey", ax=ax)
-    is_corr_str = "pearson's r" if is_corr else "r2"
-    ax.set_title(
-        f"Timescale selectivity ({is_corr_str}) , Subject: {trainer.sub_config.sub_id}-{trainer.sub_config.task}, {appendage}"
-    )
+    plt.minorticks_off()
+    plt.title(title)
+
     plt.show()
+
+
+
+# def plot_timeline_flatmaps(
+#     result_config_json, appendage: str = "Feature Set: BERT", is_corr=True
+# ):
+#     trainer = Trainer(result_config_json=result_config_json)
+#     # plotting timescale
+#     stat = np.load(trainer.result_config.stats_path)
+#     if is_corr:
+#         scores = stat["test_r_split_scores"]
+#     else:
+#         scores = stat["test_r2_split_scores"]
+#     scores_timescale = scores[:8]
+
+#     max_scores = np.argmax(scores_timescale, axis=0)
+
+#     alpha = trainer.mask.astype(float)
+
+#     ax = plot_flatmap_from_mapper(
+#         max_scores, trainer.sub_config.sub_fmri_mapper_path, alpha=alpha, cmap="rainbow"
+#     )
+
+#     # plotting mask
+#     # plot_flatmap_from_mapper(
+#     #     non_mask, trainer.sub_config.sub_fmri_mapper_path,
+#     #     cmap="grey", ax=ax)
+#     is_corr_str = "pearson's r" if is_corr else "r2"
+#     ax.set_title(
+#         f"Timescale selectivity ({is_corr_str}) , Subject: {trainer.sub_config.sub_id}-{trainer.sub_config.task}, {appendage}"
+#     )
+#     plt.show()

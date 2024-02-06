@@ -277,7 +277,7 @@ def get_bh_invalid_voxels(pvalues: np.ndarray, alpha: float):
 def put_values_on_mask(
     value_to_be_stored: np.ndarray,
     p_values: np.ndarray,
-    ev_mask: np.ndarray,
+    ev_mask: Optional[np.ndarray],
     alpha: float = 0.05,
     valid_range: Tuple[float, float] = (8,256)
 )-> Tuple[np.ndarray, np.ndarray]:
@@ -303,6 +303,9 @@ def put_values_on_mask(
         Whole voxel and valid voxels.
     
     """
+    if ev_mask is None:
+        ev_mask = np.ones(p_values.shape, dtype=bool)
+    
     whole_voxel = np.full(ev_mask.shape, np.nan)
 
     invalid_p_values = get_bh_invalid_voxels(p_values, alpha)

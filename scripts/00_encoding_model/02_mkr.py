@@ -25,19 +25,20 @@ def train(
 
 
 feature_config_paths = [
-    ".temp/config/feature/BERT-all_timescales-6-feature_config.json",
-    ".temp/config/feature/mBERT-all_timescales-6-feature_config.json",
+    ".temp/config/feature/BERT-all_timescales-7-feature_config.json",
+    ".temp/config/feature/mBERT-all_timescales-7-feature_config.json",
 ]
 
 sub_config_paths = [
     ".temp/config/subject/subject-07-reading.json",
-    ".temp/config/subject/subject-07-listening.json",
+    #".temp/config/subject/subject-07-listening.json",
 ]
 
 
 train_config_paths = [
     #".temp/config/train/trainer_config_shorttime.json",
-    ".temp/config/train/trainer_config.json",
+    #".temp/config/train/trainer_config.json",
+    ".temp/config/train/trainer_config_no_mask.json",
 ]
 
 

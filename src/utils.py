@@ -1,9 +1,12 @@
 import time
 import logging
+import multiprocessing
 
 import h5py
 
-from typing import Dict, Optional, Tuple
+from itertools import product
+
+from typing import Dict, Optional, Tuple, List
 
 import numpy as np
 import scipy.linalg
@@ -143,9 +146,7 @@ def compute_timescale_selectivity(timescale_scores: np.ndarray) -> np.ndarray:
 
     normalized_scores = np.nan_to_num(nz_scores / score_sum)
 
-    mid_ranges = np.array(
-        [np.mean(timescale_ranges[key]) for key in timescales]
-    )
+    mid_ranges = np.array([np.mean(timescale_ranges[key]) for key in timescales])
     mid_ranges = np.log2(mid_ranges)
 
     weighted_scores = np.stack(
@@ -159,12 +160,34 @@ def compute_timescale_selectivity(timescale_scores: np.ndarray) -> np.ndarray:
 
 
 # permutation test
-def permutation_test(
+def single_test(
+    blocks: List[np.ndarray],
+    true_scores: np.ndarray,
+    predictions: np.ndarray,
+    targets: np.ndarray,
+    score_func: callable,
+    repeats: int,
+    seed: int,
+):
+    np.random.seed(seed)
+    num_get_true_score = np.zeros(true_scores.shape)
+    for i in range(repeats):
+        np.random.shuffle(blocks)
+        permutation_order = np.concatenate(blocks)
+        shuffled_pred = predictions[permutation_order]
+        shuffled_scores = score_func(targets, shuffled_pred)
+        num_get_true_score[shuffled_scores >= true_scores] += 1
+    return num_get_true_score
+
+
+def permutation_test_mp(
     targets: np.ndarray,
     predictions: np.ndarray,
     score_func: callable,
     num_permutations: int = 1000,
     permutation_block_size: int = 10,
+    initial_seed: int = 0,
+    num_processes: int = 10,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Compute the p-values of the given predictions using a permutation test.
 
@@ -180,6 +203,10 @@ def permutation_test(
         Number of permutations, by default 1000
     permutation_block_size : int, optional
         Block size, intended to keep correlation high, by default 10
+    initial_seed : int, optional
+        Initial random seed, by default 0
+    num_processes : int, optional
+        Number of processes to use, by default 10
 
     Returns
     -------
@@ -188,28 +215,179 @@ def permutation_test(
     true_scores : np.ndarray
         True scores.
     """
-
     true_scores = score_func(targets, predictions)
-    
-    num_TRs = predictions.shape[0]
-    blocks = np.array_split(np.arange(num_TRs), int(num_TRs / permutation_block_size))
-    
-    num_get_true_score = np.zeros(true_scores.shape)
 
-    for permutation_num in tqdm(range(num_permutations)):
-        _ = np.random.shuffle(blocks)
-        permutation_order = np.concatenate(blocks)
-        shuffled_pred = predictions[permutation_order]
-        shuffled_scores = score_func(targets, shuffled_pred)
-        num_get_true_score[shuffled_scores >= true_scores] += 1
-    pvalues = num_get_true_score / num_permutations
+    num_TRs = targets.shape[0]
+    blocks = np.array_split(np.arange(num_TRs), int(num_TRs / permutation_block_size))
+
+    repeats = num_permutations // num_processes
     
-    return pvalues, true_scores
+    np.random.seed(initial_seed)
+    seeds = np.random.randint(0, 1000000, num_processes)
+
+    with multiprocessing.Pool(num_processes) as pool:
+        params = list(
+            product(
+                [blocks] * num_processes,
+                [true_scores],
+                [predictions],
+                [targets],
+                [score_func],
+                [repeats],
+            )
+        )
+        for i, seed in enumerate(seeds):
+            params[i] = params[i] + (seed,)
+        num_get_true_scores = pool.starmap(single_test, params)
+
+    num_get_true_score_sum = np.sum(num_get_true_scores, axis=0)
+    p_values = num_get_true_score_sum / (repeats * num_processes)
+
+    return p_values
+
+# P-Values correction
+def get_bh_invalid_voxels(pvalues: np.ndarray, alpha: float):
+    """  
+    Get invalid voxels using Benjamini-Hochberg procedure.
+    
+    Parameters
+    ----------
+    pvalues : np.ndarray
+        p-values.
+    alpha : float
+        Alpha value.
+        
+    Returns
+    -------
+    np.ndarray
+        Invalid voxels.
+    """
+    num_values = len(pvalues)
+    pvalues_sorted = np.sort(pvalues)
+    max_p = pvalues_sorted[
+        np.argmax(
+            np.where(
+                pvalues_sorted <= ((np.arange(1, num_values + 1) / num_values) * alpha)
+            )
+        )
+    ]
+    return pvalues > max_p
+
+
+def put_values_on_mask(
+    value_to_be_stored: np.ndarray,
+    p_values: np.ndarray,
+    ev_mask: Optional[np.ndarray],
+    alpha: float = 0.05,
+    valid_range: Tuple[float, float] = (8,256)
+)-> Tuple[np.ndarray, np.ndarray]:
+    """ 
+    Put voxels values of voxels given masks.
+    
+    Parameters
+    ----------
+    value_to_be_stored : np.ndarray
+        Values to be stored.
+    p_values : np.ndarray
+        p-values.
+    ev_mask : np.ndarray
+        Mask.
+    alpha : float, optional
+        Alpha value, by default 0.05
+    valid_range : Tuple[float, float], optional
+        Valid range of value_to_be_stored, by default (8,256)
+    
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray]
+        Whole voxel and valid voxels.
+    
+    """
+    if ev_mask is None:
+        ev_mask = np.ones(p_values.shape, dtype=bool)
+    
+    whole_voxel = np.full(ev_mask.shape, np.nan)
+
+    invalid_p_values = get_bh_invalid_voxels(p_values, alpha)
+
+    valid_values = (value_to_be_stored >= valid_range[0]) & (value_to_be_stored <= valid_range[1])
+    
+    value_to_be_stored[~valid_values] = np.nan
+    value_to_be_stored[invalid_p_values] = np.nan
+
+    whole_voxel[ev_mask] = value_to_be_stored
+    
+    valid_voxels = np.where(~np.isnan(whole_voxel)) 
+    return whole_voxel, valid_voxels
+
+# def permutation_test(
+#     targets: np.ndarray,
+#     predictions: np.ndarray,
+#     score_func: callable,
+#     num_permutations: int = 1000,
+#     permutation_block_size: int = 10,
+#     initial_seed: int = 0,
+#     num_processes: int = 10,
+# ) -> Tuple[np.ndarray, np.ndarray]:
+#     """Compute the p-values of the given predictions using a permutation test.
+
+#     Parameters
+#     ----------
+#     targets : np.ndarray
+#         Ground truth.
+#     predictions : np.ndarray
+#         Predicted values.
+#     score_func : callable
+#         Callable function to compute the score.
+#     num_permutations : int, optional
+#         Number of permutations, by default 1000
+#     permutation_block_size : int, optional
+#         Block size, intended to keep correlation high, by default 10
+#     initial_seed : int, optional
+#         Initial random seed, by default 0
+#     num_processes : int, optional
+#         Number of processes to use, by default 10
+
+#     Returns
+#     -------
+#     pvalues : np.ndarray
+#         p-values.
+#     true_scores : np.ndarray
+#         True scores.
+#     """
+
+#     true_scores = score_func(targets, predictions)
+
+#     num_TRs = predictions.shape[0]
+#     blocks = np.array_split(np.arange(num_TRs), int(num_TRs / permutation_block_size))
+
+#     repeats = num_permutations // num_processes
+
+#     np.random.seed(initial_seed)
+#     seeds = np.random.randint(0, 1000000, num_processes)
+
+#     def single_test(repeats: int = 0, seed: int = 0):
+#         np.random.seed(seed)
+#         num_get_true_score = np.zeros(true_scores.shape)
+#         for i in range(repeats):
+#             np.random.shuffle(blocks)
+#             permutation_order = np.concatenate(blocks)
+#             shuffled_pred = predictions[permutation_order]
+#             shuffled_scores = score_func(targets, shuffled_pred)
+#             num_get_true_score[shuffled_scores >= true_scores] += 1
+#         return num_get_true_score
+
+#     with multiprocessing.Pool(num_processes) as pool:
+#         num_get_true_scores = pool.starmap(
+#             single_test, zip([repeats] * num_processes, seeds)
+#         )
+
+#     p_values = np.sum(num_get_true_scores, axis=0) / (repeats * num_processes)
+
+#     return p_values, true_scores
 
 
 # Below are codes taken from git_address
-
-
 # Visualizing on cortical surfaces using mapper files
 def load_sparse_array(fname, varname):
     """Load a numpy sparse array from an hdf file

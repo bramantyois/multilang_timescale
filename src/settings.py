@@ -77,7 +77,7 @@ class SubjectConfig(BaseSettings):
     task: str = "reading"
     
     # mask related
-    ev_threshold: float = 1e-9
+    ev_threshold: float = 1e-12
 
 
 class ResultConfig(BaseSettings):

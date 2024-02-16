@@ -33,7 +33,7 @@ from voxelwise_tutorials.viz import (
 
 import matplotlib.pyplot as plt
 
-from src.utils import load_dict, compute_timescale_selectivity, permutation_test_mp
+from src.utils import load_dict, compute_timescale_selectivity, permutation_test, permutation_test_mp
 from src.settings import TrainerConfig, SubjectConfig, FeatureConfig, ResultConfig
 from src.config import timescale_ranges, timescales
 
@@ -497,11 +497,14 @@ class Trainer:
         # score on test
         test_r_score_mask = correlation_score_split(test_data, test_pred_split)
         test_r2_score_mask = r2_score_split(test_data, test_pred_split)
+        
+        test_joint_r_score_mask = correlation_score(test_data, test_pred)
+        test_joint_r2_score_mask = r2_score(test_data, test_pred)
 
         # do permutation test
         print("computing permutation test...")
-        test_p_values_r_mask = permutation_test_mp(test_data, test_pred, score_func=correlation_score)
-        test_p_values_r2_mask = permutation_test_mp(test_data, test_pred, score_func=r2_score)
+        test_p_values_r_mask = permutation_test_mp(test_data, test_pred, score_func=correlation_score, num_permutations=2000)
+        test_p_values_r2_mask = permutation_test_mp(test_data, test_pred, score_func=r2_score, num_permutations=2000)
 
         # compute timescale selectivity
         print("computing timescale selectivity...")
@@ -523,6 +526,9 @@ class Trainer:
             
             test_r_score_mask=test_r_score_mask,
             test_r2_score_mask=test_r2_score_mask,
+            
+            test_joint_r_score_mask=test_joint_r_score_mask,
+            test_joint_r2_score_mask=test_joint_r2_score_mask,
             
             test_p_values_r_mask=test_p_values_r_mask,
             test_p_values_r2_mask=test_p_values_r2_mask,

@@ -221,7 +221,7 @@ def permutation_test_mp(
     blocks = np.array_split(np.arange(num_TRs), int(num_TRs / permutation_block_size))
 
     repeats = num_permutations // num_processes
-    
+
     np.random.seed(initial_seed)
     seeds = np.random.randint(0, 1000000, num_processes)
 
@@ -245,18 +245,42 @@ def permutation_test_mp(
 
     return p_values
 
+
+def permutation_test(
+    responses_test: np.ndarray,
+    predictions: np.ndarray,
+    score_func: callable,
+    num_permutations: int = 1000,
+    permutation_block_size: int = 10,
+):
+    true_scores = score_func(responses_test, predictions)
+    num_get_true_score = np.zeros(true_scores.shape)
+
+    num_TRs = predictions.shape[0]
+    blocks = np.array_split(np.arange(num_TRs), int(num_TRs / permutation_block_size))
+    for permutation_num in tqdm(range(num_permutations)):
+        _ = np.random.shuffle(blocks)
+        permutation_order = np.concatenate(blocks)
+        predictions = predictions[permutation_order]
+        shuffled_scores = score_func(responses_test, predictions)
+        num_get_true_score[shuffled_scores >= true_scores] += 1
+    pvalues = num_get_true_score / num_permutations
+    
+    return pvalues
+
+
 # P-Values correction
 def get_bh_invalid_voxels(pvalues: np.ndarray, alpha: float):
-    """  
+    """
     Get invalid voxels using Benjamini-Hochberg procedure.
-    
+
     Parameters
     ----------
     pvalues : np.ndarray
         p-values.
     alpha : float
         Alpha value.
-        
+
     Returns
     -------
     np.ndarray
@@ -279,11 +303,11 @@ def put_values_on_mask(
     p_values: np.ndarray,
     ev_mask: Optional[np.ndarray],
     alpha: float = 0.05,
-    valid_range: Tuple[float, float] = (8,256)
-)-> Tuple[np.ndarray, np.ndarray]:
-    """ 
+    valid_range: Tuple[float, float] = (8, 256),
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
     Put voxels values of voxels given masks.
-    
+
     Parameters
     ----------
     value_to_be_stored : np.ndarray
@@ -296,29 +320,32 @@ def put_values_on_mask(
         Alpha value, by default 0.05
     valid_range : Tuple[float, float], optional
         Valid range of value_to_be_stored, by default (8,256)
-    
+
     Returns
     -------
     Tuple[np.ndarray, np.ndarray]
         Whole voxel and valid voxels.
-    
+
     """
     if ev_mask is None:
         ev_mask = np.ones(p_values.shape, dtype=bool)
-    
+
     whole_voxel = np.full(ev_mask.shape, np.nan)
 
     invalid_p_values = get_bh_invalid_voxels(p_values, alpha)
 
-    valid_values = (value_to_be_stored >= valid_range[0]) & (value_to_be_stored <= valid_range[1])
-    
+    valid_values = (value_to_be_stored >= valid_range[0]) & (
+        value_to_be_stored <= valid_range[1]
+    )
+
     value_to_be_stored[~valid_values] = np.nan
     value_to_be_stored[invalid_p_values] = np.nan
 
     whole_voxel[ev_mask] = value_to_be_stored
-    
-    valid_voxels = np.where(~np.isnan(whole_voxel)) 
+
+    valid_voxels = np.where(~np.isnan(whole_voxel))
     return whole_voxel, valid_voxels
+
 
 # def permutation_test(
 #     targets: np.ndarray,

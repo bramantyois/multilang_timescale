@@ -106,7 +106,7 @@ def plot_flatmap_from_mapper_w_cnorm(
     return ax
 
 
-def plot_timescale_flatmap(voxels: np.ndarray, mapper_file: str, title: str = "Timescale Selectivity"):
+def plot_timescale_flatmap(voxels: np.ndarray, mapper_file: str, title: str = "Timescale Selectivity", mask: np.ndarray = None):
     fig, ax = plt.subplots(1,1, figsize=(20,10))
     
     plot_flatmap_from_mapper_w_cnorm(voxels, mapper_file=mapper_file,vmin=8, vmax=256, cmap="rainbow", ax=ax, with_colorbar=False)

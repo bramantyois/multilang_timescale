@@ -1,14 +1,17 @@
 import time
 import logging
 
+import copy
+
 import h5py
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List 
 
 import numpy as np
 import scipy.linalg
 import scipy.sparse
 from scipy.signal import periodogram
+from scipy.stats import zscore
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -17,6 +20,8 @@ from tqdm import tqdm
 
 from .config import timescales, timescale_ranges
 
+logger = logging.getLogger(__name__)
+#logger.setLevel('INFO')
 
 # function computing the PSD of a time-series
 def compute_psd(
@@ -223,6 +228,106 @@ def permutation_test(
 
     return p_values, true_scores
 
+
+def cook_responses(responses: Dict,
+                   test_runs: List[str],
+                   train_runs: List[str] = None,
+                   trim_start_length: int = 10,
+                   trim_end_length: int = 10,
+                   do_zscore: bool = True,
+                   do_mean_centering: bool = False,
+                   multiseries: str = "separate",
+                   resample_proportion: float = None,
+                   trim_exceptions_dict: Dict = None,
+                   trs_to_remove_dict: Dict = None):
+    '''
+    args:
+        responses: Dictionary of responses per run
+        test_runs: run ids ([{textgrid_name}]) to use for test set.
+        train_runs: run ids ([{textgrid_name}]) to use for train set.
+        trim_start_length: Number of TRs to trim from start of features.
+        trim_end_length: Number of TRs to trim from end of features.
+        do_zscore: Whether to zscore results before returning them.
+        do_mean_centering:
+        multiseries :
+        trim_exceptions_dict : {run_name: [start_trim, end_trim]}
+        trs_to_remove_dict : {run_name: [trs_to_remove]} dictionary of trs to remove (e.g., because of large motion).
+    returns:
+        train_responses, test_responses: [num_trimmed_TRs x num_voxels] matrices of responses.
+        resample_proportion: factor by which to resample data (original_tr / new_tr).
+    '''
+    responses_by_run_name = copy.deepcopy(responses)
+
+    assert(trim_end_length >= 0)
+    # Does not work with Python negative indexing
+    # if trim_end_length == 0:
+    #     trim_end_length = -np.inf
+
+    if train_runs is None:
+        logger.info('train_runs not specified, will be taken from responses.keys()')
+        train_runs = [run for run in responses_by_run_name.keys() if run not in test_runs]
+
+    assert(len(set(train_runs).intersection(test_runs)) == 0)
+
+    logger.info(f'Responses will be returned using {multiseries}')
+    for run_name in train_runs + test_runs:
+        response = responses_by_run_name[run_name]
+        # Handle repetitions of a run
+        if multiseries == "mean":
+            response = np.sum(response, axis=0) / len(response)
+        elif multiseries == "concat":
+            response = np.vstack(response)
+        elif multiseries == "separate":
+            response = np.squeeze(response)
+        elif multiseries == "average_across":
+            if len(np.shape(response)) > 2:
+                response = np.mean(response, axis=0)
+
+        # Remove TRs if applicable.
+        if trs_to_remove_dict is not None:
+            if run_name in trs_to_remove_dict:
+                logger.info(f'Removing {len(trs_to_remove_dict[run_name])} TRs from {run_name} for responses')
+                response = np.delete(response, trs_to_remove_dict[run_name], axis=0)
+
+        # Trim and zscore each run separately
+        trim_start = trim_start_length
+        trim_end = trim_end_length
+        if trim_exceptions_dict is not None:
+            if run_name in list(trim_exceptions_dict.keys()):
+                trim_start, trim_end = trim_exceptions_dict[run_name]
+        logger.info(f'Trim {run_name} with [{trim_start}:-{trim_end}]')
+
+        # If response has more than one repetition as in "multiseries == separate"
+        if len(np.shape(response)) > 2:
+            response = np.array([res[trim_start: -trim_end] for res in response])
+        else:
+            if trim_end == 0:
+                response = np.array(response[trim_start:])
+            else:
+                response = np.array(response[trim_start: -trim_end])
+
+        if do_zscore:
+            # If response has more than one repetition as in "multiseries == separate"
+            if len(np.shape(response)) > 2:
+                response = np.array([zscore(res) for res in response])
+            else:
+                response = np.array(zscore(response))
+
+        responses_by_run_name[run_name] = response
+
+    if resample_proportion:
+         responses_by_run_name = {key: resample(response, round(response.shape[0] * resample_proportion)) for key, response in responses_by_run_name.items()}
+
+    train_responses = np.concatenate([responses_by_run_name[run] for run in train_runs], axis=0)
+    logger.info(f'Train runs: {train_runs}')
+    logger.info(f'Train responses: {np.shape(train_responses)}')
+
+    logger.info(f'Test runs: {test_runs}')
+    test_responses = [responses_by_run_name[run] for run in test_runs]
+    test_sizes = [np.shape(test_response) for test_response in test_responses]
+    logger.info(f'Test responses (Each test run is an entry in the list): {test_sizes}')
+
+    return train_responses, test_responses
 
 # Below are codes taken from git_address
 # Visualizing on cortical surfaces using mapper files

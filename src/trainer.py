@@ -33,10 +33,22 @@ from voxelwise_tutorials.viz import (
 
 import matplotlib.pyplot as plt
 
-from src.utils import load_dict, compute_timescale_selectivity, permutation_test, permutation_test_mp
+from src.utils import (
+    load_dict,
+    compute_timescale_selectivity,
+    permutation_test,
+    permutation_test_mp,
+    cook_responses
+)
 from src.settings import TrainerConfig, SubjectConfig, FeatureConfig, ResultConfig
-from src.config import timescale_ranges, timescales
-
+from src.config import (
+    timescale_ranges,
+    timescales,
+    train_stories,
+    test_stories,
+    train_stories_zh,
+    test_stories_zh,
+)
 
 class Trainer:
     def __init__(
@@ -116,36 +128,60 @@ class Trainer:
         self.result_config = result_config
 
     def _prepare_data(self):
-        train_data = load_dict(self.sub_config.sub_fmri_train_path)
-        test_data = load_dict(self.sub_config.sub_fmri_test_path)
+        if self.sub_config.sub_fmri_train_test_path is None:
+            train_data = load_dict(self.sub_config.sub_fmri_train_path)
+            test_data = load_dict(self.sub_config.sub_fmri_test_path)
+            # zscore data
+            ## zscore data
+            train_data = np.vstack(
+                [
+                    zscore(
+                        train_data[story][
+                            self.sub_config.sub_trim_start : -self.sub_config.sub_trim_end,
+                            :,
+                        ],
+                        axis=0,
+                    )
+                    for story in list(train_data.keys())
+                ]
+            )
+            self.train_data = np.nan_to_num(train_data)
 
-        # zscore data
-        ## zscore data
-        train_data = np.vstack(
-            [
-                zscore(
-                    train_data[story][
-                        self.sub_config.sub_trim_start : -self.sub_config.sub_trim_end,
-                        :,
-                    ],
-                    axis=0,
-                )
-                for story in list(train_data.keys())
-            ]
-        )
-        self.train_data = np.nan_to_num(train_data)
+            # computing ev before masking
+            ev = explainable_variance(test_data["story_11"])
+            self.mask = ev > self.sub_config.ev_threshold
 
-        # computing ev before masking
-        ev = explainable_variance(test_data["story_11"])
-        self.mask = ev > self.sub_config.ev_threshold
+            test_data = zscore(
+                np.mean(test_data["story_11"], axis=0)[
+                    self.sub_config.sub_trim_start : -self.sub_config.sub_trim_end, :
+                ],
+                axis=0,
+            )
+            self.test_data = np.nan_to_num(test_data)
+        else:
+            if self.sub_config.lang_code == "en":
+                train_strs = train_stories
+                test_strs = test_stories
+            else:
+                train_strs = train_stories_zh
+                test_strs = test_stories_zh
 
-        test_data = zscore(
-            np.mean(test_data["story_11"], axis=0)[
-                self.sub_config.sub_trim_start : -self.sub_config.sub_trim_end, :
-            ],
-            axis=0,
-        )
-        self.test_data = np.nan_to_num(test_data)
+            data = load_dict(self.sub_config.sub_fmri_train_test_path)
+            train_data, test_data = cook_responses(
+                data,
+                test_runs=test_strs,
+                train_runs=train_strs,
+                trim_start_length=self.sub_config.sub_trim_start,
+                trim_end_length=self.sub_config.sub_trim_end,
+                multiseries="average_across",
+                do_zscore=True,
+            )
+
+            self.train_data = np.nan_to_num(train_data)
+            self.test_data = np.nan_to_num(test_data[0])
+
+            # ev = explainable_variance(test_data)
+            self.mask = np.ones(self.train_data.shape[1], dtype=bool)
 
     def _prepare_features(self):
         train_features = []
@@ -250,6 +286,71 @@ class Trainer:
                         "feature": np.nan_to_num(moten_test[f]),
                     }
                 )
+
+        # join sensory features
+        if self.feature_config.join_sensory_feature_path is not None:
+            sensory_features = np.load(
+                self.feature_config.join_sensory_feature_path, allow_pickle=True
+            )
+            sensory_train_features = sensory_features["train_features"].tolist()
+            sensory_test_features = sensory_features["test_features"].tolist()
+
+            ## number of words
+            if "numwords" in self.feature_config.join_sensory_feature_list:
+                train_features.append(
+                    {
+                        "name": "numwords",
+                        "size": sensory_train_features["numwords"].shape[1],
+                        "feature": sensory_train_features["numwords"],
+                    }
+                )
+                test_features.append(
+                    {
+                        "name": "numwords",
+                        "size": sensory_test_features["numwords"][0].shape[1],
+                        "feature": sensory_test_features["numwords"][0],
+                    }
+                )
+
+            ## number of letters
+            if "numletters" in self.feature_config.join_sensory_feature_list:
+                train_features.append(
+                    {
+                        "name": "numletters",
+                        "size": sensory_train_features["numletters"].shape[1],
+                        "feature": sensory_train_features["numletters"],
+                    }
+                )
+                test_features.append(
+                    {
+                        "name": "numletters",
+                        "size": sensory_test_features["numletters"][0].shape[1],
+                        "feature": sensory_test_features["numletters"][0],
+                    }
+                )
+
+            ## moten
+            if "moten" in self.feature_config.join_sensory_feature_list:
+                sub_id = self.sub_config.sub_id
+                train_features.append(
+                    {
+                        "name": "moten",
+                        "size": sensory_train_features[f"motion_energy_{sub_id}"].shape[
+                            1
+                        ],
+                        "feature": sensory_train_features[f"motion_energy_{sub_id}"],
+                    }
+                )
+                test_features.append(
+                    {
+                        "name": "moten",
+                        "size": sensory_test_features[f"motion_energy_{sub_id}"][
+                            0
+                        ].shape[1],
+                        "feature": sensory_test_features[f"motion_energy_{sub_id}"][0],
+                    }
+                )
+
         # add index to feature
         for i, f in enumerate(train_features):
             f["index"] = i
@@ -265,11 +366,11 @@ class Trainer:
 
         assert (
             self.train_feature.shape[0] == self.train_data.shape[0]
-        ), "Feature and data shape mismatch"
+        ), f"Feature and data shape mismatch {self.train_feature.shape[0]} != {self.train_data.shape[0]}"
 
         assert (
             self.test_feature.shape[0] == self.test_data.shape[0]
-        ), "Feature and data shape mismatch"
+        ), f"Feature and data shape mismatch {self.test_feature.shape[0]} != {self.test_data.shape[0]}"
 
         # remove 'feature' key, save memory
         for f in train_features:
@@ -369,10 +470,10 @@ class Trainer:
             torch.cuda.empty_cache()
 
     # def compute_stats(self, prediction_split: np.ndarray, prediction: np.ndarray, target: np.ndarray force_cpu: bool=False):
-        
+
     #     r2_score_mask = r2_score_split(target, prediction_split)
     #     r_score_mask = correlation_score_split(target, prediction_split)
-        
+
     #     r_timescale_selectivity = compute_timescale_selectivity(
     #         r_score_mask[0:8]
     #     )
@@ -383,7 +484,7 @@ class Trainer:
     #     if self.trainer_config.fit_on_mask:
     #         n_kernels = r2_score_mask.shape[0]
     #         n_voxels = self.test_data.shape[1]
-            
+
     #         r2_split_scores = np.zeros((n_kernels, n_voxels))
     #         r_split_scores = np.zeros((n_kernels, n_voxels))
 
@@ -497,14 +598,18 @@ class Trainer:
         # score on test
         test_r_score_mask = correlation_score_split(test_data, test_pred_split)
         test_r2_score_mask = r2_score_split(test_data, test_pred_split)
-        
+
         test_joint_r_score_mask = correlation_score(test_data, test_pred)
         test_joint_r2_score_mask = r2_score(test_data, test_pred)
 
         # do permutation test
         print("computing permutation test...")
-        test_p_values_r_mask = permutation_test_mp(test_data, test_pred, score_func=correlation_score, num_permutations=2000)
-        test_p_values_r2_mask = permutation_test_mp(test_data, test_pred, score_func=r2_score, num_permutations=2000)
+        test_p_values_r_mask = permutation_test_mp(
+            test_data, test_pred, score_func=correlation_score, num_permutations=2000
+        )
+        test_p_values_r2_mask = permutation_test_mp(
+            test_data, test_pred, score_func=r2_score, num_permutations=2000
+        )
 
         # compute timescale selectivity
         print("computing timescale selectivity...")
@@ -515,28 +620,23 @@ class Trainer:
         test_r2_timescale_selectivity_mask = compute_timescale_selectivity(
             test_r2_score_mask[0:8]
         )
-        
+
         test_r_selectivity_mask = np.power(2, test_r_timescale_selectivity_mask)
         test_r2_selectivity_mask = np.power(2, test_r2_timescale_selectivity_mask)
-        
+
         # saving stat
         print("saving stat...")
         np.savez_compressed(
             self.result_config.stats_path,
-            
             test_r_score_mask=test_r_score_mask,
             test_r2_score_mask=test_r2_score_mask,
-            
             test_joint_r_score_mask=test_joint_r_score_mask,
             test_joint_r2_score_mask=test_joint_r2_score_mask,
-            
             test_p_values_r_mask=test_p_values_r_mask,
             test_p_values_r2_mask=test_p_values_r2_mask,
-            
             test_r_selectivity_mask=test_r_selectivity_mask,
             test_r2_selectivity_mask=test_r2_selectivity_mask,
-            
-            mask = self.mask
+            mask=self.mask,
         )
 
         # clear cuda memory
@@ -549,7 +649,7 @@ class Trainer:
                 "test split predictions": test_pred_split,
                 "test predictions": test_pred,
             }
-        
+
         # if self.trainer_config.fit_on_mask:
         #     n_kernels = test_r2_score_mask.shape[0]
         #     n_voxels = self.test_data.shape[1]
@@ -576,8 +676,6 @@ class Trainer:
 
         #     test_r2_selectivity = test_r2_timescale_selectivity
         #     test_r_selectivity = test_r_timescale_selectivity
-        
-
 
     def get_scores(self):
         return np.load(self.result_config.stats_path)

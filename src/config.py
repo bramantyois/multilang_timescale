@@ -31,6 +31,21 @@ train_stories = [
 
 test_stories = ["wheretheressmoke"]
 
+train_stories_zh = [
+    "alternateithacatomAudio_zh",
+    "avatarAudio_zh",
+    "howtodrawAudio_zh",
+    "legacyAudio_zh",
+    "lifeAudio_zh",
+    "myfirstdaywiththeyankeesAudio_zh",
+    "nakedAudio_zh",
+    "odetostepfatherAudio_zh",
+    "soulsAudio_zh",
+    "undertheinfluenceAudio_zh",
+]
+
+test_stories_zh = ["wheretheressmokeAudio_zh"]
+
 
 timescales = [
     "2_4_words",
@@ -80,4 +95,3 @@ timescale_ranges= {
 # weights_save_path = os.path.join(model_save_path, "weights")
 # hyperparams_save_path = os.path.join(model_save_path, "hyperparams")
 # stats_save_path = os.path.join(model_save_path, "stats")
-

@@ -6,7 +6,7 @@ import pdb
 from .textgrid import TextGrid
 from .features import Features
 
-from ..config import (
+from ..configurations import (
     feature_sets_path,
     grids_path,
     trs_path,

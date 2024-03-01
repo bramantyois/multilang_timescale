@@ -16,9 +16,9 @@ def train(
     config_train_path: str,
 ):
     trainer = Trainer(
-        sub_config_json=config_subject_path,
-        feature_config_json=config_feature_path,
-        trainer_config_json=config_train_path,
+        sub_setting_json=config_subject_path,
+        feature_setting_json=config_feature_path,
+        trainer_setting_json=config_train_path,
     )
     trainer.train()
     trainer.refit_and_evaluate()
@@ -27,7 +27,12 @@ def train(
 feature_config_paths = [
     ".temp/config/bling/feature/mBERT_all_timescale_en.json",
     ".temp/config/bling/feature/mBERT_all_timescale_zh.json",
+    
     ".temp/config/bling/feature/BERT_all_timescale_en.json",
+    
+    ".temp/config/bling/feature/mBERT_all_untrimmed_timescale_en.json",
+    
+    ".temp/config/bling/feature/chinese_BERT_all_untrimmed_timescale_zh.json",
 ]
 
 sub_config_paths = [
@@ -37,6 +42,7 @@ sub_config_paths = [
 
 train_config_paths = [
     ".temp/config/bling/train/trainer.json",
+    ".temp/config/bling/train/trainer_short.json",
 ]
 
 # train(
@@ -51,8 +57,15 @@ train_config_paths = [
 #     config_train_path=train_config_paths[0],
 # )
 
+# train(
+#     config_subject_path=sub_config_paths[0],
+#     config_feature_path=feature_config_paths[3],
+#     config_train_path=train_config_paths[1],
+# )
+
+
 train(
-    config_subject_path=sub_config_paths[0],
-    config_feature_path=feature_config_paths[2],
+    config_subject_path=sub_config_paths[1],
+    config_feature_path=feature_config_paths[4],
     config_train_path=train_config_paths[0],
 )

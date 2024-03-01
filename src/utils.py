@@ -1,6 +1,8 @@
+import os
 import time
 import logging
 import multiprocessing
+import json
 
 import h5py
 
@@ -13,6 +15,8 @@ from itertools import product
 from typing import Dict, Optional, Tuple, List
 
 import numpy as np
+import pandas as pd
+
 import scipy.linalg
 import scipy.sparse
 from scipy.signal import periodogram
@@ -22,7 +26,8 @@ import seaborn as sns
 
 from scipy.stats import zscore
 
-from .config import timescales, timescale_ranges
+from .configurations import timescales, timescale_ranges
+from .settings import ResultSetting
 
 
 # function computing the PSD of a time-series
@@ -257,7 +262,7 @@ def permutation_test(
     num_permutations: int = 1000,
     permutation_block_size: int = 10,
 ):
-    true_scores = score_func(responses_test, predictions)
+    true_scores = score_func(responses_test, predictions).detach().cpu().numpy()
     num_get_true_score = np.zeros(true_scores.shape)
 
     num_TRs = predictions.shape[0]
@@ -266,7 +271,7 @@ def permutation_test(
         _ = np.random.shuffle(blocks)
         permutation_order = np.concatenate(blocks)
         predictions = predictions[permutation_order]
-        shuffled_scores = score_func(responses_test, predictions)
+        shuffled_scores = score_func(responses_test, predictions).detach().cpu().numpy()
         num_get_true_score[shuffled_scores >= true_scores] += 1
     pvalues = num_get_true_score / num_permutations
     
@@ -517,6 +522,29 @@ def cook_responses(responses: Dict,
 #     p_values = np.sum(num_get_true_scores, axis=0) / (repeats * num_processes)
 
 #     return p_values, true_scores
+
+
+def read_result_meta(result_meta_dir: str):
+    # scanning result meta json files and put it into a dataframe
+    result_meta_files = os.listdir(result_meta_dir)
+    result_meta_files = [f for f in result_meta_files if f.endswith(".json")]
+    ## read json and cast it into ResultSetting
+    result_meta_list = []
+    for f in result_meta_files:
+        with open(os.path.join(result_meta_dir, f), "r") as f:
+            result_config = ResultSetting(**json.load(f))
+            result_meta_list.append(result_config.dict())
+
+    result_meta_df = pd.DataFrame(result_meta_list)
+
+    # add result_meta_files to result_meta_df
+    result_meta_df["result_meta_file"] = [
+        os.path.join(result_meta_dir, f) for f in result_meta_files
+    ]
+    
+    result_meta_df.sort_values(["subject_config_path","trainer_config_path", "feature_config_path", ], inplace=True)
+    
+    return result_meta_df
 
 
 # Below are codes taken from git_address

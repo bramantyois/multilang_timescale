@@ -3,7 +3,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseSettings
 
 
-class FeatureConfig(BaseSettings):
+class FeatureSetting(BaseSettings):
     timescale: List[str] = [
         "2_4_words",
         "4_8_words",
@@ -16,8 +16,12 @@ class FeatureConfig(BaseSettings):
     ]
 
     # lm feature
-    lm_feature_type: str = ""
-    lm_feature_path: str = ""
+    lm_feature_type: Optional[str] = None
+    lm_feature_path: Optional[str] = None
+    
+    is_lm_feature_trimmed: Optional[bool]= None
+    lm_feature_trim_start: Optional[int] = None
+    lm_feature_trim_end: Optional[int] = None
 
     # join sensory feature
     join_sensory_feature_path: Optional[str] = None
@@ -42,7 +46,7 @@ class FeatureConfig(BaseSettings):
     zscore_use_std: bool = True
 
 
-class TrainerConfig(BaseSettings):
+class TrainerSetting(BaseSettings):
     # training related
     kfolds: int = 5
     alpha_min: float = -10
@@ -79,13 +83,13 @@ class TrainerConfig(BaseSettings):
     # stats_save_dir: str = "./models/stats"
 
 
-class SubjectConfig(BaseSettings):
+class SubjectSetting(BaseSettings):
     # subject related
     sub_id: str = ""
-    sub_fmri_train_path: Optional[str] = ""
-    sub_fmri_test_path: Optional[str] = ""
+    sub_fmri_train_path: Optional[str] = None
+    sub_fmri_test_path: Optional[str] = None
 
-    sub_fmri_train_test_path: Optional[str] = ""
+    sub_fmri_train_test_path: Optional[str] = None
 
     sub_fmri_mapper_path: str = ""
     
@@ -102,7 +106,7 @@ class SubjectConfig(BaseSettings):
     ev_threshold: float = 1e-9
 
 
-class ResultConfig(BaseSettings):
+class ResultSetting(BaseSettings):
     subject_config_path: str = ""
     feature_config_path: str = ""
     trainer_config_path: str = ""

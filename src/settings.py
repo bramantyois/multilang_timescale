@@ -75,12 +75,9 @@ class TrainerSetting(BaseSettings):
     result_save_dir: str = ".temp/result"
     result_meta_save_dir: str = ".temp/result_meta"
 
-    # #weights_save_dir: str = "./models/weights"
-    # hyperparams_save_dir: str = "./models/hyperparams"
-    # #model_save_path: str = "./models/model"
-
-    # ## stats
-    # stats_save_dir: str = "./models/stats"
+    # stepwise regression related
+    stepwise: Optional[bool] = False
+    lowlevel_result_meta: Optional[str] = None
 
 
 class SubjectSetting(BaseSettings):

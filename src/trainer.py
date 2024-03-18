@@ -266,7 +266,7 @@ class Trainer:
                         }
                     )
 
-        # sensory-level features
+        # joint sensory-level features
         ## train
         if self.feature_setting.sensory_feature_train_paths is not None:
             sensory_level_train_feature = load_dict(

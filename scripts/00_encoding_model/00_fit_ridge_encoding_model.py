@@ -38,7 +38,7 @@ from src.vm_tutorial_sklearn.hard_coded_things import (
     features_sets,
 )
 
-from src.config import (
+from src.configurations import (
     feature_sets_en_path,
     reading_data_en_path,
     model_save_path,

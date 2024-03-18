@@ -1,14 +1,22 @@
+import os
 import time
 import logging
 import multiprocessing
+import json
 
 import h5py
+
+import copy
+
+from tqdm import tqdm
 
 from itertools import product
 
 from typing import Dict, Optional, Tuple, List
 
 import numpy as np
+import pandas as pd
+
 import scipy.linalg
 import scipy.sparse
 from scipy.signal import periodogram
@@ -16,9 +24,10 @@ from scipy.signal import periodogram
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from tqdm import tqdm
+from scipy.stats import zscore
 
-from .config import timescales, timescale_ranges
+from .configurations import timescales, timescale_ranges
+from .settings import ResultSetting
 
 
 # function computing the PSD of a time-series
@@ -253,7 +262,7 @@ def permutation_test(
     num_permutations: int = 1000,
     permutation_block_size: int = 10,
 ):
-    true_scores = score_func(responses_test, predictions)
+    true_scores = score_func(responses_test, predictions).detach().cpu().numpy()
     num_get_true_score = np.zeros(true_scores.shape)
 
     num_TRs = predictions.shape[0]
@@ -262,7 +271,7 @@ def permutation_test(
         _ = np.random.shuffle(blocks)
         permutation_order = np.concatenate(blocks)
         predictions = predictions[permutation_order]
-        shuffled_scores = score_func(responses_test, predictions)
+        shuffled_scores = score_func(responses_test, predictions).detach().cpu().numpy()
         num_get_true_score[shuffled_scores >= true_scores] += 1
     pvalues = num_get_true_score / num_permutations
     
@@ -347,6 +356,107 @@ def put_values_on_mask(
     return whole_voxel, valid_voxels
 
 
+# Response Cooking
+def cook_responses(responses: Dict,
+                   test_runs: List[str],
+                   train_runs: List[str] = None,
+                   trim_start_length: int = 10,
+                   trim_end_length: int = 10,
+                   do_zscore: bool = True,
+                   do_mean_centering: bool = False,
+                   multiseries: str = "separate",
+                   resample_proportion: float = None,
+                   trim_exceptions_dict: Dict = None,
+                   trs_to_remove_dict: Dict = None):
+    '''
+    args:
+        responses: Dictionary of responses per run
+        test_runs: run ids ([{textgrid_name}]) to use for test set.
+        train_runs: run ids ([{textgrid_name}]) to use for train set.
+        trim_start_length: Number of TRs to trim from start of features.
+        trim_end_length: Number of TRs to trim from end of features.
+        do_zscore: Whether to zscore results before returning them.
+        do_mean_centering:
+        multiseries :
+        trim_exceptions_dict : {run_name: [start_trim, end_trim]}
+        trs_to_remove_dict : {run_name: [trs_to_remove]} dictionary of trs to remove (e.g., because of large motion).
+    returns:
+        train_responses, test_responses: [num_trimmed_TRs x num_voxels] matrices of responses.
+        resample_proportion: factor by which to resample data (original_tr / new_tr).
+    '''
+    responses_by_run_name = copy.deepcopy(responses)
+
+    assert(trim_end_length >= 0)
+    # Does not work with Python negative indexing
+    # if trim_end_length == 0:
+    #     trim_end_length = -np.inf
+
+    if train_runs is None:
+        #logger.info('train_runs not specified, will be taken from responses.keys()')
+        train_runs = [run for run in responses_by_run_name.keys() if run not in test_runs]
+
+    assert(len(set(train_runs).intersection(test_runs)) == 0)
+
+    #logger.info(f'Responses will be returned using {multiseries}')
+    for run_name in train_runs + test_runs:
+        response = responses_by_run_name[run_name]
+        # Handle repetitions of a run
+        if multiseries == "mean":
+            response = np.sum(response, axis=0) / len(response)
+        elif multiseries == "concat":
+            response = np.vstack(response)
+        elif multiseries == "separate":
+            response = np.squeeze(response)
+        elif multiseries == "average_across":
+            if len(np.shape(response)) > 2:
+                response = np.mean(response, axis=0)
+
+        # Remove TRs if applicable.
+        if trs_to_remove_dict is not None:
+            if run_name in trs_to_remove_dict:
+                #logger.info(f'Removing {len(trs_to_remove_dict[run_name])} TRs from {run_name} for responses')
+                response = np.delete(response, trs_to_remove_dict[run_name], axis=0)
+
+        # Trim and zscore each run separately
+        trim_start = trim_start_length
+        trim_end = trim_end_length
+        if trim_exceptions_dict is not None:
+            if run_name in list(trim_exceptions_dict.keys()):
+                trim_start, trim_end = trim_exceptions_dict[run_name]
+        #logger.info(f'Trim {run_name} with [{trim_start}:-{trim_end}]')
+
+        # If response has more than one repetition as in "multiseries == separate"
+        if len(np.shape(response)) > 2:
+            response = np.array([res[trim_start: -trim_end] for res in response])
+        else:
+            if trim_end == 0:
+                response = np.array(response[trim_start:])
+            else:
+                response = np.array(response[trim_start: -trim_end])
+
+        if do_zscore:
+            # If response has more than one repetition as in "multiseries == separate"
+            if len(np.shape(response)) > 2:
+                response = np.array([zscore(res) for res in response])
+            else:
+                response = np.array(zscore(response))
+
+        responses_by_run_name[run_name] = response
+
+    if resample_proportion:
+         responses_by_run_name = {key: resample(response, round(response.shape[0] * resample_proportion)) for key, response in responses_by_run_name.items()}
+
+    train_responses = np.concatenate([responses_by_run_name[run] for run in train_runs], axis=0)
+    # logger.info(f'Train runs: {train_runs}')
+    # logger.info(f'Train responses: {np.shape(train_responses)}')
+
+    # logger.info(f'Test runs: {test_runs}')
+    test_responses = [responses_by_run_name[run] for run in test_runs]
+    test_sizes = [np.shape(test_response) for test_response in test_responses]
+    #logger.info(f'Test responses (Each test run is an entry in the list): {test_sizes}')
+
+    return train_responses, test_responses
+
 # def permutation_test(
 #     targets: np.ndarray,
 #     predictions: np.ndarray,
@@ -412,6 +522,29 @@ def put_values_on_mask(
 #     p_values = np.sum(num_get_true_scores, axis=0) / (repeats * num_processes)
 
 #     return p_values, true_scores
+
+
+def read_result_meta(result_meta_dir: str):
+    # scanning result meta json files and put it into a dataframe
+    result_meta_files = os.listdir(result_meta_dir)
+    result_meta_files = [f for f in result_meta_files if f.endswith(".json")]
+    ## read json and cast it into ResultSetting
+    result_meta_list = []
+    for f in result_meta_files:
+        with open(os.path.join(result_meta_dir, f), "r") as f:
+            result_config = ResultSetting(**json.load(f))
+            result_meta_list.append(result_config.dict())
+
+    result_meta_df = pd.DataFrame(result_meta_list)
+
+    # add result_meta_files to result_meta_df
+    result_meta_df["result_meta_file"] = [
+        os.path.join(result_meta_dir, f) for f in result_meta_files
+    ]
+    
+    result_meta_df.sort_values(["subject_config_path","trainer_config_path", "feature_config_path", ], inplace=True)
+    
+    return result_meta_df
 
 
 # Below are codes taken from git_address

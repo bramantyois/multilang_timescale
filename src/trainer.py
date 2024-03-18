@@ -33,64 +33,83 @@ from voxelwise_tutorials.viz import (
 
 import matplotlib.pyplot as plt
 
-from src.utils import load_dict, compute_timescale_selectivity, permutation_test, permutation_test_mp
-from src.settings import TrainerConfig, SubjectConfig, FeatureConfig, ResultConfig
-from src.config import timescale_ranges, timescales
+from src.utils import (
+    load_dict,
+    compute_timescale_selectivity,
+    permutation_test,
+    permutation_test_mp,
+    cook_responses,
+)
+from src.settings import TrainerSetting, SubjectSetting, FeatureSetting, ResultSetting
+from src.configurations import (
+    timescale_ranges,
+    timescales,
+    train_stories,
+    test_stories,
+    train_stories_zh,
+    test_stories_zh,
+)
 
-
+# TODO: 
 class Trainer:
     def __init__(
         self,
-        sub_config_json: Optional[str] = None,
-        feature_config_json: Optional[str] = None,
-        trainer_config_json: Optional[str] = None,
-        result_config_json: str = None,
+        sub_setting_json: Optional[str] = None,
+        feature_setting_json: Optional[str] = None,
+        trainer_setting_json: Optional[str] = None,
+        result_setting_json: str = None,
+        cuda_device_id: int = 1,
     ):
         should_create_result_config = True
-        if result_config_json is not None:
-            temp = self._load_json(result_config_json)
-            self.result_config = ResultConfig(**temp)
+        if result_setting_json is not None:
+            temp = self._load_json(result_setting_json)
+            self.result_config = ResultSetting(**temp)
 
-            sub_config_json = self.result_config.subject_config_path
-            feature_config_json = self.result_config.feature_config_path
-            trainer_config_json = self.result_config.trainer_config_path
+            sub_setting_json = self.result_config.subject_config_path
+            feature_setting_json = self.result_config.feature_config_path
+            trainer_setting_json = self.result_config.trainer_config_path
 
             should_create_result_config = False
 
-        temp = self._load_json(sub_config_json)
-        self.sub_config = SubjectConfig(**temp)
+        temp = self._load_json(sub_setting_json)
+        self.sub_setting = SubjectSetting(**temp)
 
-        temp = self._load_json(feature_config_json)
-        self.feature_config = FeatureConfig(**temp)
+        temp = self._load_json(feature_setting_json)
+        self.feature_setting = FeatureSetting(**temp)
 
-        temp = self._load_json(trainer_config_json)
-        self.trainer_config = TrainerConfig(**temp)
+        temp = self._load_json(trainer_setting_json)
+        self.trainer_setting = TrainerSetting(**temp)
 
         if should_create_result_config:
             self._generate_output_config(
-                sub_config_json, feature_config_json, trainer_config_json
+                sub_setting_json, feature_setting_json, trainer_setting_json
             )
 
         self._prepare_data()
         self._prepare_features()
 
         set_config(assume_finite=True)
+        
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(cuda_device_id)
 
     def _load_json(self, path):
         with open(path) as f:
             return json.load(f)
 
     def _generate_output_config(
-        self, sub_config_json: str, feature_config_json: str, trainer_config_json: str
+        self,
+        sub_setting_json: str,
+        feature_setting_json: str,
+        trainer_setting_json: str,
     ):
         id = str(uuid.uuid4())
 
-        result_dir = os.path.join(self.trainer_config.result_save_dir, id)
+        result_dir = os.path.join(self.trainer_setting.result_save_dir, id)
 
-        result_config = ResultConfig()
-        result_config.subject_config_path = sub_config_json
-        result_config.feature_config_path = feature_config_json
-        result_config.trainer_config_path = trainer_config_json
+        result_config = ResultSetting()
+        result_config.subject_config_path = sub_setting_json
+        result_config.feature_config_path = feature_setting_json
+        result_config.trainer_config_path = trainer_setting_json
 
         result_config.result_dir = result_dir
         result_config.hyperparam_path = os.path.join(result_dir, "hyperparams.npz")
@@ -104,91 +123,162 @@ class Trainer:
             os.makedirs(result_config.plot_dir)
 
         # to json
-        if not os.path.exists(self.trainer_config.result_meta_save_dir):
-            os.makedirs(self.trainer_config.result_meta_save_dir)
-        result_config_json = os.path.join(
-            self.trainer_config.result_meta_save_dir, f"{id}.json"
+        if not os.path.exists(self.trainer_setting.result_meta_save_dir):
+            os.makedirs(self.trainer_setting.result_meta_save_dir)
+        result_setting_json = os.path.join(
+            self.trainer_setting.result_meta_save_dir, f"{id}.json"
         )
 
-        with open(result_config_json, "w") as f:
+        with open(result_setting_json, "w") as f:
             json.dump(result_config.__dict__, f, indent=4)
 
         self.result_config = result_config
 
     def _prepare_data(self):
-        train_data = load_dict(self.sub_config.sub_fmri_train_path)
-        test_data = load_dict(self.sub_config.sub_fmri_test_path)
+        if self.sub_setting.sub_fmri_train_test_path is None:
+            train_data = load_dict(self.sub_setting.sub_fmri_train_path)
+            test_data = load_dict(self.sub_setting.sub_fmri_test_path)
+            # zscore data
+            ## zscore data
+            train_data = np.vstack(
+                [
+                    zscore(
+                        train_data[story][
+                            self.sub_setting.sub_trim_start : -self.sub_setting.sub_trim_end,
+                            :,
+                        ],
+                        axis=0,
+                    )
+                    for story in list(train_data.keys())
+                ]
+            )
+            self.train_data = np.nan_to_num(train_data)
 
-        # zscore data
-        ## zscore data
-        train_data = np.vstack(
-            [
-                zscore(
-                    train_data[story][
-                        self.sub_config.sub_trim_start : -self.sub_config.sub_trim_end,
-                        :,
-                    ],
-                    axis=0,
-                )
-                for story in list(train_data.keys())
-            ]
-        )
-        self.train_data = np.nan_to_num(train_data)
+            # computing ev before masking
+            ev = explainable_variance(test_data["story_11"])
+            self.mask = ev > self.sub_setting.ev_threshold
 
-        # computing ev before masking
-        ev = explainable_variance(test_data["story_11"])
-        self.mask = ev > self.sub_config.ev_threshold
+            test_data = zscore(
+                np.mean(test_data["story_11"], axis=0)[
+                    self.sub_setting.sub_trim_start : -self.sub_setting.sub_trim_end, :
+                ],
+                axis=0,
+            )
+            self.test_data = np.nan_to_num(test_data)
+        else:
+            if self.sub_setting.lang_code == "en":
+                train_strs = train_stories
+                test_strs = test_stories
+            else:
+                train_strs = train_stories_zh
+                test_strs = test_stories_zh
 
-        test_data = zscore(
-            np.mean(test_data["story_11"], axis=0)[
-                self.sub_config.sub_trim_start : -self.sub_config.sub_trim_end, :
-            ],
-            axis=0,
-        )
-        self.test_data = np.nan_to_num(test_data)
+            data = load_dict(self.sub_setting.sub_fmri_train_test_path)
+            train_data, test_data = cook_responses(
+                data,
+                test_runs=test_strs,
+                train_runs=train_strs,
+                trim_start_length=self.sub_setting.sub_trim_start,
+                trim_end_length=self.sub_setting.sub_trim_end,
+                multiseries="average_across",
+                do_zscore=True,
+            )
+
+            self.train_data = np.nan_to_num(train_data)
+            self.test_data = np.nan_to_num(test_data[0])
+
+            # ev = explainable_variance(test_data)
+            self.mask = np.ones(self.train_data.shape[1], dtype=bool)
 
     def _prepare_features(self):
         train_features = []
         test_features = []
 
         # lm-derived feature
-        ## train
-        lm_feature_train_test = np.load(
-            self.feature_config.lm_feature_path, allow_pickle=True
-        )
+        if self.feature_setting.lm_feature_type is None:
+            print('skipping lm feature')
+        else:    
+            ## if feature is trimmed
+            if (
+                self.feature_setting.is_lm_feature_trimmed is None
+                or self.feature_setting.is_lm_feature_trimmed is True
+            ):
+                    lm_feature_train_test = np.load(
+                        self.feature_setting.lm_feature_path, allow_pickle=True
+                    )
 
-        for t in self.feature_config.timescale:
-            lm_features = lm_feature_train_test["train"].tolist()[t]
-            train_features.append(
-                {
-                    "name": f"lm_{t}",
-                    "size": lm_features.shape[1],
-                    "feature": np.nan_to_num(lm_features),
-                }
-            )
-            ## test
-            lm_features = lm_feature_train_test["test"].tolist()[t]
-            test_features.append(
-                {
-                    "name": f"lm_{t}",
-                    "size": lm_features.shape[1],
-                    "feature": np.nan_to_num(lm_features),
-                }
-            )
+                    for t in self.feature_setting.timescale:
+                        lm_features = lm_feature_train_test["train"].tolist()[t]
+                        train_features.append(
+                            {
+                                "name": f"lm_{t}",
+                                "size": lm_features.shape[1],
+                                "feature": np.nan_to_num(lm_features),
+                            }
+                        )
+                        ## test
+                        lm_features = lm_feature_train_test["test"].tolist()[t]
+                        test_features.append(
+                            {
+                                "name": f"lm_{t}",
+                                "size": lm_features.shape[1],
+                                "feature": np.nan_to_num(lm_features),
+                            }
+                        )
+            else: # feature is not trimmed
+                lm_feature_train_test = np.load(
+                    self.feature_setting.lm_feature_path, allow_pickle=True
+                )
 
-        # sensory-level features
+                lm_train_untrimmed = lm_feature_train_test["train"].tolist()
+                lm_test_untrimmed = lm_feature_train_test["test"].tolist()
+
+                for t in self.feature_setting.timescale:
+                    lm_train_feature = []
+                    lm_test_feature = []
+                    for s in train_stories:
+                        train = lm_train_untrimmed[t][s][
+                            self.feature_setting.lm_feature_trim_start : -self.feature_setting.lm_feature_trim_end
+                        ]
+                        lm_train_feature.append(train)
+
+                    for s in test_stories:
+                        test = lm_test_untrimmed[t][s][
+                            self.feature_setting.lm_feature_trim_start : -self.feature_setting.lm_feature_trim_end
+                        ]
+                        lm_test_feature.append(test)
+
+                    lm_train_feature = np.concatenate(lm_train_feature, axis=0)
+                    lm_test_feature = np.concatenate(lm_test_feature, axis=0)
+
+                    train_features.append(
+                        {
+                            "name": f"lm_{t}",
+                            "size": lm_train_feature.shape[1],
+                            "feature": np.nan_to_num(lm_train_feature),
+                        }
+                    )
+                    test_features.append(
+                        {
+                            "name": f"lm_{t}",
+                            "size": lm_test_feature.shape[1],
+                            "feature": np.nan_to_num(lm_test_feature),
+                        }
+                    )
+
+        # joint sensory-level features
         ## train
-        if self.feature_config.sensory_feature_train_paths is not None:
+        if self.feature_setting.sensory_feature_train_paths is not None:
             sensory_level_train_feature = load_dict(
-                self.feature_config.sensory_feature_train_paths
+                self.feature_setting.sensory_feature_train_paths
             )
 
-            for feature in self.feature_config.sensory_features:
+            for feature in self.feature_setting.sensory_features:
                 story_stacked = []
                 for story in list(sensory_level_train_feature.keys()):
                     story_stacked.append(
                         sensory_level_train_feature[story][feature][
-                            self.feature_config.sensory_feature_trim_start : -self.feature_config.sensory_feature_trim_end
+                            self.feature_setting.sensory_feature_trim_start : -self.feature_setting.sensory_feature_trim_end
                         ]
                     )
                 story_stacked = np.vstack(story_stacked)
@@ -200,17 +290,17 @@ class Trainer:
                     }
                 )
         ## test
-        if self.feature_config.sensory_feature_test_paths is not None:
+        if self.feature_setting.sensory_feature_test_paths is not None:
             sensory_level_test_feature = load_dict(
-                self.feature_config.sensory_feature_test_paths
+                self.feature_setting.sensory_feature_test_paths
             )
 
-            for feature in self.feature_config.sensory_features:
+            for feature in self.feature_setting.sensory_features:
                 story_stacked = []
                 for story in list(sensory_level_test_feature.keys()):
                     story_stacked.append(
                         sensory_level_test_feature[story][feature][
-                            self.feature_config.sensory_feature_trim_start : -self.feature_config.sensory_feature_trim_end
+                            self.feature_setting.sensory_feature_trim_start : -self.feature_setting.sensory_feature_trim_end
                         ]
                     )
                 story_stacked = np.vstack(story_stacked)
@@ -223,14 +313,14 @@ class Trainer:
                 )
 
         # motion-energy features
-        if self.feature_config.motion_energy_feature_paths is not None:
+        if self.feature_setting.motion_energy_feature_paths is not None:
             moten = np.load(
-                self.feature_config.motion_energy_feature_paths, allow_pickle=True
+                self.feature_setting.motion_energy_feature_paths, allow_pickle=True
             )
             ## train
             moten_train = moten["train"].tolist()
 
-            for f in self.feature_config.motion_energy_features:
+            for f in self.feature_setting.motion_energy_features:
                 train_features.append(
                     {
                         "name": f"motion energy : {f}",
@@ -242,7 +332,7 @@ class Trainer:
             ## test
             moten_test = moten["test"].tolist()
 
-            for f in self.feature_config.motion_energy_features:
+            for f in self.feature_setting.motion_energy_features:
                 test_features.append(
                     {
                         "name": f"motion energy : {f}",
@@ -250,6 +340,71 @@ class Trainer:
                         "feature": np.nan_to_num(moten_test[f]),
                     }
                 )
+
+        # join sensory features
+        if self.feature_setting.join_sensory_feature_path is not None:
+            sensory_features = np.load(
+                self.feature_setting.join_sensory_feature_path, allow_pickle=True
+            )
+            sensory_train_features = sensory_features["train_features"].tolist()
+            sensory_test_features = sensory_features["test_features"].tolist()
+
+            ## number of words
+            if "numwords" in self.feature_setting.join_sensory_feature_list:
+                train_features.append(
+                    {
+                        "name": "numwords",
+                        "size": sensory_train_features["numwords"].shape[1],
+                        "feature": sensory_train_features["numwords"],
+                    }
+                )
+                test_features.append(
+                    {
+                        "name": "numwords",
+                        "size": sensory_test_features["numwords"][0].shape[1],
+                        "feature": sensory_test_features["numwords"][0],
+                    }
+                )
+
+            ## number of letters
+            if "numletters" in self.feature_setting.join_sensory_feature_list:
+                train_features.append(
+                    {
+                        "name": "numletters",
+                        "size": sensory_train_features["numletters"].shape[1],
+                        "feature": sensory_train_features["numletters"],
+                    }
+                )
+                test_features.append(
+                    {
+                        "name": "numletters",
+                        "size": sensory_test_features["numletters"][0].shape[1],
+                        "feature": sensory_test_features["numletters"][0],
+                    }
+                )
+
+            ## moten
+            if "moten" in self.feature_setting.join_sensory_feature_list:
+                sub_id = self.sub_setting.sub_id
+                train_features.append(
+                    {
+                        "name": "moten",
+                        "size": sensory_train_features[f"motion_energy_{sub_id}"].shape[
+                            1
+                        ],
+                        "feature": sensory_train_features[f"motion_energy_{sub_id}"],
+                    }
+                )
+                test_features.append(
+                    {
+                        "name": "moten",
+                        "size": sensory_test_features[f"motion_energy_{sub_id}"][
+                            0
+                        ].shape[1],
+                        "feature": sensory_test_features[f"motion_energy_{sub_id}"][0],
+                    }
+                )
+
         # add index to feature
         for i, f in enumerate(train_features):
             f["index"] = i
@@ -260,16 +415,16 @@ class Trainer:
         self.train_feature = np.hstack([f["feature"] for f in train_features])
         self.test_feature = np.hstack([f["feature"] for f in test_features])
 
-        # delays = np.arange(1, self.trainer_config.feature_delay + 1)
+        # delays = np.arange(1, self.trainer_setting.feature_delay + 1)
         # self.train_feature = make_delayed(train_feature, delays)
 
         assert (
             self.train_feature.shape[0] == self.train_data.shape[0]
-        ), "Feature and data shape mismatch"
+        ), f"Feature and data shape mismatch {self.train_feature.shape[0]} != {self.train_data.shape[0]}"
 
         assert (
             self.test_feature.shape[0] == self.test_data.shape[0]
-        ), "Feature and data shape mismatch"
+        ), f"Feature and data shape mismatch {self.test_feature.shape[0]} != {self.test_data.shape[0]}"
 
         # remove 'feature' key, save memory
         for f in train_features:
@@ -284,10 +439,10 @@ class Trainer:
     def get_kernelizer(self):
         preprocess_pipeline = make_pipeline(
             StandardScaler(
-                with_mean=self.feature_config.zscore_use_mean,
-                with_std=self.feature_config.zscore_use_std,
+                with_mean=self.feature_setting.zscore_use_mean,
+                with_std=self.feature_setting.zscore_use_std,
             ),
-            Delayer(delays=np.arange(1, self.trainer_config.feature_delay + 1)),
+            Delayer(delays=np.arange(1, self.trainer_setting.feature_delay + 1)),
             Kernelizer(kernel="linear"),
         )
 
@@ -312,22 +467,22 @@ class Trainer:
         columnn_kernelizer = self.get_kernelizer()
         # model
         solver_params = dict(
-            n_iter=self.trainer_config.n_iter,
+            n_iter=self.trainer_setting.n_iter,
             alphas=np.logspace(
-                self.trainer_config.alpha_min,
-                self.trainer_config.alpha_max,
-                self.trainer_config.alpha_num,
+                self.trainer_setting.alpha_min,
+                self.trainer_setting.alpha_max,
+                self.trainer_setting.alpha_num,
             ),
-            n_targets_batch=self.trainer_config.n_targets_batch,
-            n_alphas_batch=self.trainer_config.n_alphas_batch,
-            n_targets_batch_refit=self.trainer_config.n_targets_batch_refit,
+            n_targets_batch=self.trainer_setting.n_targets_batch,
+            n_alphas_batch=self.trainer_setting.n_alphas_batch,
+            n_targets_batch_refit=self.trainer_setting.n_targets_batch_refit,
         )
 
         mkr_model = MultipleKernelRidgeCV(
             kernels="precomputed",
-            solver=self.trainer_config.solver,
+            solver=self.trainer_setting.solver,
             solver_params=solver_params,
-            cv=self.trainer_config.kfolds,
+            cv=self.trainer_setting.kfolds,
         )
 
         return make_pipeline(columnn_kernelizer, mkr_model, verbose=False)
@@ -336,7 +491,7 @@ class Trainer:
         if force_cpu:
             set_backend("torch", on_error="warn")
         else:
-            set_backend(self.trainer_config.backend, on_error="warn")
+            set_backend(self.trainer_setting.backend, on_error="warn")
 
         pipeline = self.prepare_training_pipeline()
 
@@ -344,7 +499,7 @@ class Trainer:
         train_feature = self.train_feature.astype("float32")
         train_data = self.train_data.astype("float32")
 
-        if self.trainer_config.fit_on_mask:
+        if self.trainer_setting.fit_on_mask:
             train_data = train_data[:, self.mask]
             # print("using mask size of {train_data.shape}")
 
@@ -364,15 +519,15 @@ class Trainer:
         )
 
         # clear cuda memory
-        if self.trainer_config.backend == "torch_cuda":
+        if self.trainer_setting.backend == "torch_cuda":
             del pipeline
             torch.cuda.empty_cache()
 
     # def compute_stats(self, prediction_split: np.ndarray, prediction: np.ndarray, target: np.ndarray force_cpu: bool=False):
-        
+
     #     r2_score_mask = r2_score_split(target, prediction_split)
     #     r_score_mask = correlation_score_split(target, prediction_split)
-        
+
     #     r_timescale_selectivity = compute_timescale_selectivity(
     #         r_score_mask[0:8]
     #     )
@@ -380,10 +535,10 @@ class Trainer:
     #         r2_score_mask[0:8]
     #     )
 
-    #     if self.trainer_config.fit_on_mask:
+    #     if self.trainer_setting.fit_on_mask:
     #         n_kernels = r2_score_mask.shape[0]
     #         n_voxels = self.test_data.shape[1]
-            
+
     #         r2_split_scores = np.zeros((n_kernels, n_voxels))
     #         r_split_scores = np.zeros((n_kernels, n_voxels))
 
@@ -413,7 +568,7 @@ class Trainer:
         if force_cpu:
             backend = set_backend("torch", on_error="warn")
         else:
-            backend = set_backend(self.trainer_config.backend, on_error="warn")
+            backend = set_backend(self.trainer_setting.backend, on_error="warn")
 
         # load hyperparams
         hyperparams_fn = os.path.join(
@@ -424,12 +579,12 @@ class Trainer:
         hyperparams = np.load(hyperparams_fn)
         deltas = (
             hyperparams["deltas"].astype("float32")
-            if self.trainer_config.use_fitted_deltas
+            if self.trainer_setting.use_fitted_deltas
             else "zeros"
         )
         best_alphas = (
             hyperparams["best_alphas"].astype("float32")
-            if self.trainer_config.use_fitted_alphas
+            if self.trainer_setting.use_fitted_alphas
             else 1
         )
 
@@ -442,7 +597,7 @@ class Trainer:
             kernels="precomputed",
             solver="conjugate_gradient",
             solver_params={
-                "n_targets_batch": self.trainer_config.n_targets_batch_refit
+                "n_targets_batch": self.trainer_setting.n_targets_batch_refit
             },
         )
 
@@ -455,7 +610,7 @@ class Trainer:
         test_feature = self.test_feature.astype("float32")
         test_data = self.test_data.astype("float32")
 
-        if self.trainer_config.fit_on_mask:
+        if self.trainer_setting.fit_on_mask:
             train_data = train_data[:, self.mask]
             test_data = test_data[:, self.mask]
             # print("using mask size of {train_data.shape}")
@@ -469,7 +624,7 @@ class Trainer:
         print("predicting in batches...")
 
         def predict_in_batches(
-            model, X, batch_size=self.trainer_config.n_targets_batch_refit, split=True
+            model, X, batch_size=self.trainer_setting.n_targets_batch_refit, split=True
         ):
             n_samples = X.shape[0]
             n_batches = int(np.ceil(n_samples / batch_size))
@@ -492,55 +647,73 @@ class Trainer:
 
         # now do it in cpu
         print("computing scores...")
-        backend = set_backend("numpy", on_error="warn")
+        if force_cpu:
+            backend = set_backend("numpy", on_error="warn")
 
         # score on test
         test_r_score_mask = correlation_score_split(test_data, test_pred_split)
         test_r2_score_mask = r2_score_split(test_data, test_pred_split)
-        
+
         test_joint_r_score_mask = correlation_score(test_data, test_pred)
         test_joint_r2_score_mask = r2_score(test_data, test_pred)
 
         # do permutation test
+        if force_cpu:
+            permutation_text_func = permutation_test_mp
+        else:
+            permutation_text_func = permutation_test
+        
         print("computing permutation test...")
-        test_p_values_r_mask = permutation_test_mp(test_data, test_pred, score_func=correlation_score, num_permutations=2000)
-        test_p_values_r2_mask = permutation_test_mp(test_data, test_pred, score_func=r2_score, num_permutations=2000)
+        test_p_values_r_mask = permutation_text_func(
+            test_data, test_pred, score_func=correlation_score, num_permutations=2000
+        )
+        test_p_values_r2_mask = permutation_text_func(
+            test_data, test_pred, score_func=r2_score, num_permutations=2000
+        )
+        
+        # to numpy 
+        test_r_score_mask = backend.to_numpy(test_r_score_mask)
+        test_r2_score_mask = backend.to_numpy(test_r2_score_mask)
+        test_joint_r_score_mask = backend.to_numpy(test_joint_r_score_mask)
+        test_joint_r2_score_mask = backend.to_numpy(test_joint_r2_score_mask)
+        test_p_values_r_mask = backend.to_numpy(test_p_values_r_mask)
+        test_p_values_r2_mask = backend.to_numpy(test_p_values_r2_mask)
 
         # compute timescale selectivity
-        print("computing timescale selectivity...")
+        if self.feature_setting.lm_feature_type is None:            
+            print("skip timescale selectivity")
+            test_r_selectivity_mask = 0
+            test_r2_selectivity_mask = 0
+        else:
+            test_r_timescale_selectivity_mask = compute_timescale_selectivity(
+                test_r_score_mask[0:8]
+            )
+            test_r2_timescale_selectivity_mask = compute_timescale_selectivity(
+                test_r2_score_mask[0:8]
+            )
 
-        test_r_timescale_selectivity_mask = compute_timescale_selectivity(
-            test_r_score_mask[0:8]
-        )
-        test_r2_timescale_selectivity_mask = compute_timescale_selectivity(
-            test_r2_score_mask[0:8]
-        )
-        
-        test_r_selectivity_mask = np.power(2, test_r_timescale_selectivity_mask)
-        test_r2_selectivity_mask = np.power(2, test_r2_timescale_selectivity_mask)
-        
+            test_r_selectivity_mask = np.power(2, test_r_timescale_selectivity_mask)
+            test_r2_selectivity_mask = np.power(2, test_r2_timescale_selectivity_mask)
+
         # saving stat
         print("saving stat...")
         np.savez_compressed(
             self.result_config.stats_path,
-            
             test_r_score_mask=test_r_score_mask,
             test_r2_score_mask=test_r2_score_mask,
-            
             test_joint_r_score_mask=test_joint_r_score_mask,
             test_joint_r2_score_mask=test_joint_r2_score_mask,
-            
             test_p_values_r_mask=test_p_values_r_mask,
             test_p_values_r2_mask=test_p_values_r2_mask,
-            
             test_r_selectivity_mask=test_r_selectivity_mask,
             test_r2_selectivity_mask=test_r2_selectivity_mask,
-            
-            mask = self.mask
+            mask=self.mask,
+            test_info=self.test_feature_info,
+            train_info=self.train_feature_info, 
         )
 
         # clear cuda memory
-        if self.trainer_config.backend == "torch_cuda":
+        if self.trainer_setting.backend == "torch_cuda":
             del pipeline
             torch.cuda.empty_cache()
 
@@ -549,8 +722,8 @@ class Trainer:
                 "test split predictions": test_pred_split,
                 "test predictions": test_pred,
             }
-        
-        # if self.trainer_config.fit_on_mask:
+
+        # if self.trainer_setting.fit_on_mask:
         #     n_kernels = test_r2_score_mask.shape[0]
         #     n_voxels = self.test_data.shape[1]
 
@@ -576,8 +749,6 @@ class Trainer:
 
         #     test_r2_selectivity = test_r2_timescale_selectivity
         #     test_r_selectivity = test_r_timescale_selectivity
-        
-
 
     def get_scores(self):
         return np.load(self.result_config.stats_path)
@@ -605,7 +776,7 @@ class Trainer:
 
     #     plot_flatmap_from_mapper(
     #         voxels=scores[feature_index],
-    #         mapper_file=self.sub_config.sub_fmri_mapper_path,
+    #         mapper_file=self.sub_setting.sub_fmri_mapper_path,
     #         vmin=0,
     #         vmax=0.5,
     #         ax=ax,
@@ -622,7 +793,7 @@ class Trainer:
     #     # load statfile
     #     stat_fn = os.path.join(
     #         self.result_config.stat_dir,
-    #         f"{self.sub_config.sub_id}-{self.sub_config.task}-{self.feature_config.timescale}.npz",
+    #         f"{self.sub_setting.sub_id}-{self.sub_setting.task}-{ self.feature_setting.timescale}.npz",
     #     )
 
     #     stat = np.load(stat_fn)
@@ -642,7 +813,7 @@ class Trainer:
     #     plot_2d_flatmap_from_mapper(
     #         voxels_1=scores[feature_indices[0]],
     #         voxels_2=scores[feature_indices[1]],
-    #         mapper_file=self.sub_config.sub_fmri_mapper_path,
+    #         mapper_file=self.sub_setting.sub_fmri_mapper_path,
     #         vmin=0,
     #         vmax=0.5,
     #         vmin2=0,

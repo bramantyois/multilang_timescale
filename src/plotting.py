@@ -7,7 +7,11 @@ from voxelwise_tutorials.viz import map_voxels_to_flatmap
 from voxelwise_tutorials.viz import _plot_addition_layers
 from voxelwise_tutorials.io import load_hdf5_array
 
+from cortex import Volume
+from cortex.quickflat import make_figure
+
 from src.trainer import Trainer
+
 
 def plot_flatmap_from_mapper_w_cnorm(
     voxels,
@@ -21,6 +25,7 @@ def plot_flatmap_from_mapper_w_cnorm(
     with_rois=True,
     with_colorbar=True,
     colorbar_location=(0.4, 0.9, 0.2, 0.05),
+    norm="log",
 ):
     """Plot a flatmap from a mapper file, with 1D data.
 
@@ -80,11 +85,26 @@ def plot_flatmap_from_mapper_w_cnorm(
     alpha = np.nan_to_num(alpha, nan=0, posinf=0, neginf=0)
     # plot the data
     image = map_voxels_to_flatmap(voxels, mapper_file)
-    cimg = ax.imshow(
-        image, aspect="equal", zorder=1, alpha=alpha, cmap=cmap,
-        #norm=PowerNorm(gamma=0.5, vmin=vmin, vmax=vmax, clip=True),
-        norm=LogNorm(vmin=vmin, vmax=vmax, clip=True), 
-    )
+    if norm == "log":
+        cimg = ax.imshow(
+            image,
+            aspect="equal",
+            zorder=1,
+            alpha=alpha,
+            cmap=cmap,
+            # norm=PowerNorm(gamma=0.5, vmin=vmin, vmax=vmax, clip=True),
+            norm=LogNorm(vmin=vmin, vmax=vmax, clip=True),
+        )
+    else:
+        cimg = ax.imshow(
+            image,
+            aspect="equal",
+            zorder=1,
+            alpha=alpha,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
 
     if with_colorbar:
         try:
@@ -92,7 +112,6 @@ def plot_flatmap_from_mapper_w_cnorm(
         except AttributeError:  # for matplotlib < 3.0
             cbar = ax.figure.add_axes(colorbar_location)
         ax.figure.colorbar(cimg, cax=cbar, orientation="horizontal", extend="max")
-        
 
     # plot additional layers if present
     _plot_addition_layers(
@@ -106,10 +125,25 @@ def plot_flatmap_from_mapper_w_cnorm(
     return ax
 
 
-def plot_timescale_flatmap(voxels: np.ndarray, mapper_file: str, title: str = "Timescale Selectivity", mask: np.ndarray = None):
-    fig, ax = plt.subplots(1,1, figsize=(20,10))
-    
-    plot_flatmap_from_mapper_w_cnorm(voxels, mapper_file=mapper_file,vmin=8, vmax=256, cmap="rainbow", ax=ax, with_colorbar=False)
+def plot_timescale_flatmap(
+    voxels: np.ndarray,
+    mapper_file: str,
+    title: str = "Timescale Selectivity",
+    mask: np.ndarray = None,
+    norm: str = "log",
+):
+    fig, ax = plt.subplots(1, 1, figsize=(20, 10))
+
+    plot_flatmap_from_mapper_w_cnorm(
+        voxels,
+        mapper_file=mapper_file,
+        vmin=8,
+        vmax=256,
+        cmap="rainbow",
+        ax=ax,
+        with_colorbar=False,
+        norm=norm,
+    )
 
     ax.axis("off")
 
@@ -117,9 +151,9 @@ def plot_timescale_flatmap(voxels: np.ndarray, mapper_file: str, title: str = "T
     cax = fig.add_axes([0.4, 0.9, 0.2, 0.05])
     cbar = plt.colorbar(ax.images[0], cax=cax, orientation="horizontal")
 
-    #cbar = plt.colorbar(ax.images[0], cax=cax)
+    # cbar = plt.colorbar(ax.images[0], cax=cax)
     cbar.set_label("Number of Words")
-    cbar.set_ticks([8, 16, 32, 64, 128 , 256])
+    cbar.set_ticks([8, 16, 32, 64, 128, 256])
     cbar.set_ticklabels([8, 16, 32, 64, 128, 256])
 
     plt.minorticks_off()
@@ -127,6 +161,29 @@ def plot_timescale_flatmap(voxels: np.ndarray, mapper_file: str, title: str = "T
 
     plt.show()
 
+
+def plot_timescale_flatmap_from_volume(
+    volume: Volume, title: str = "Timescale Selectivity", mask: np.ndarray = None
+):
+    fig, ax = plt.subplots(1, 1, figsize=(20, 10))
+
+    make_figure(volume, fig=ax, with_colorbar=False, with_curvature=True)
+    
+    ax.axis("off")
+
+    # add vertical colorbar
+    cax = fig.add_axes([0.4, 0.9, 0.2, 0.05])
+    cbar = plt.colorbar(ax.images[0], cax=cax, orientation="horizontal")
+
+    # cbar = plt.colorbar(ax.images[0], cax=cax)
+    cbar.set_label("Number of Words")
+    cbar.set_ticks([8, 16, 32, 64, 128, 256])
+    cbar.set_ticklabels([8, 16, 32, 64, 128, 256])
+
+    plt.minorticks_off()
+    plt.title(title)
+
+    plt.show()
 
 
 # def plot_timeline_flatmaps(

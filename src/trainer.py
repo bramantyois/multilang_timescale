@@ -90,6 +90,7 @@ class Trainer:
 
         set_config(assume_finite=True)
         
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(cuda_device_id)
 
     def _load_json(self, path):
@@ -114,6 +115,8 @@ class Trainer:
         result_config.result_dir = result_dir
         result_config.hyperparam_path = os.path.join(result_dir, "hyperparams.npz")
         result_config.stats_path = os.path.join(result_dir, "stats.npz")
+        result_config.prediction_path = os.path.join(result_dir, "predictions.npz")
+        
         result_config.plot_dir = os.path.join(result_dir, "plots")
 
         # creating dirs
@@ -186,9 +189,22 @@ class Trainer:
 
             self.train_data = np.nan_to_num(train_data)
             self.test_data = np.nan_to_num(test_data[0])
+              
+        # if stepwise, then regress out
+        if self.trainer_setting.stepwise:
+            print("regressing out...")
 
-            # ev = explainable_variance(test_data)
-            self.mask = np.ones(self.train_data.shape[1], dtype=bool)
+            regress_out = np.load(self.trainer_setting.regress_out_path)
+            
+            self.train_data = self.train_data - regress_out['train_pred']
+            self.test_data = self.test_data - regress_out['test_pred']
+            
+            # zscore data
+            self.train_data = zscore(self.train_data, axis=0)
+            self.test_data = zscore(self.test_data, axis=0)
+
+        # ev = explainable_variance(test_data)
+        self.mask = np.ones(self.train_data.shape[1], dtype=bool)
 
     def _prepare_features(self):
         train_features = []
@@ -644,6 +660,9 @@ class Trainer:
         # train_pred_split = predict_in_batches(pipeline, train_feature)
         test_pred_split = predict_in_batches(pipeline, test_feature)
         test_pred = predict_in_batches(pipeline, test_feature, split=False)
+        
+        train_pred_split = predict_in_batches(pipeline, train_feature)
+        train_pred = predict_in_batches(pipeline, train_feature, split=False)
 
         # now do it in cpu
         print("computing scores...")
@@ -711,6 +730,17 @@ class Trainer:
             test_info=self.test_feature_info,
             train_info=self.train_feature_info, 
         )
+
+        # saving predicitions
+        if self.trainer_setting.save_predictions:
+            print("saving predictions...")
+            np.savez_compressed(
+                self.result_config.prediction_path,
+                test_pred_split=test_pred_split,
+                test_pred=test_pred,
+                train_pred_split=train_pred_split,
+                train_pred=train_pred,
+            )
 
         # clear cuda memory
         if self.trainer_setting.backend == "torch_cuda":

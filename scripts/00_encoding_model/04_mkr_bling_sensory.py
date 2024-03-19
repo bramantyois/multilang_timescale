@@ -16,8 +16,9 @@ zh_subject_config = ".temp/config/bling/subject/COL_zh.json"
 en_feature_config = ".temp/config/bling/feature/sensory_feature_en.json"
 zh_feature_config = ".temp/config/bling/feature/sensory_feature_zh.json"    
 
-trainer_config = ".temp/config/bling/train/trainer_medium.json"
+#trainer_config = ".temp/config/bling/train/trainer_medium.json"
 #trainer_config = ".temp/config/bling/train/trainer.json"
+trainer_config = ".temp/config/bling/train/trainer_lowlevel_stepwise.json"
 
 trainer = Trainer(
     sub_setting_json=en_subject_config,

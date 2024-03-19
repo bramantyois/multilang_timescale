@@ -74,10 +74,13 @@ class TrainerSetting(BaseSettings):
     # output related
     result_save_dir: str = ".temp/result"
     result_meta_save_dir: str = ".temp/result_meta"
+    
+    # to save predictions
+    save_predictions: Optional[bool] = False
 
     # stepwise regression related
     stepwise: Optional[bool] = False
-    lowlevel_result_meta: Optional[str] = None
+    regress_out_path: Optional[str] = None
 
 
 class SubjectSetting(BaseSettings):
@@ -112,4 +115,8 @@ class ResultSetting(BaseSettings):
     result_dir: str = ""
     hyperparam_path: str = ""
     stats_path: str = ""
+    
+    prediction_path: Optional[str] = None
+    
     plot_dir: str = ""
+    

@@ -90,6 +90,7 @@ class Trainer:
 
         set_config(assume_finite=True)
         
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(cuda_device_id)
 
     def _load_json(self, path):
@@ -114,6 +115,8 @@ class Trainer:
         result_config.result_dir = result_dir
         result_config.hyperparam_path = os.path.join(result_dir, "hyperparams.npz")
         result_config.stats_path = os.path.join(result_dir, "stats.npz")
+        result_config.prediction_path = os.path.join(result_dir, "predictions.npz")
+        
         result_config.plot_dir = os.path.join(result_dir, "plots")
 
         # creating dirs
@@ -135,7 +138,7 @@ class Trainer:
         self.result_config = result_config
 
     def _prepare_data(self):
-        if self.sub_setting.sub_fmri_train_test_path is None:
+        if self.sub_setting.sub_fmri_train_path is not None:
             train_data = load_dict(self.sub_setting.sub_fmri_train_path)
             test_data = load_dict(self.sub_setting.sub_fmri_test_path)
             # zscore data
@@ -165,7 +168,7 @@ class Trainer:
                 axis=0,
             )
             self.test_data = np.nan_to_num(test_data)
-        else:
+        elif self.sub_setting.sub_fmri_train_test_path is not None:
             if self.sub_setting.lang_code == "en":
                 train_strs = train_stories
                 test_strs = test_stories
@@ -186,9 +189,38 @@ class Trainer:
 
             self.train_data = np.nan_to_num(train_data)
             self.test_data = np.nan_to_num(test_data[0])
+        elif self.sub_setting.sub_fmri_train_test_en_zh_path is not None:
+            data = load_dict(self.sub_setting.sub_fmri_train_test_en_zh_path)
+            
+            if self.sub_setting.lang_code == "en":
+                train_data = data['train_en']
+                test_data = data['test_en']
+            else: # zh
+                train_data = data['train_zh']
+                test_data = data['test_zh']
+                
+            train_data = np.nan_to_num(train_data)
+            test_data = np.nan_to_num(test_data)
+            
+            # zscore
+            self.train_data = zscore(train_data, axis=0)
+            self.test_data = zscore(test_data, axis=0)
+              
+        # if stepwise, then regress out
+        if self.trainer_setting.stepwise:
+            print("regressing out...")
 
-            # ev = explainable_variance(test_data)
-            self.mask = np.ones(self.train_data.shape[1], dtype=bool)
+            regress_out = np.load(self.trainer_setting.regress_out_path)
+            
+            self.train_data = self.train_data - regress_out['train_pred']
+            self.test_data = self.test_data - regress_out['test_pred']
+            
+            # zscore data
+            self.train_data = zscore(self.train_data, axis=0)
+            self.test_data = zscore(self.test_data, axis=0)
+
+        # ev = explainable_variance(test_data)
+        self.mask = np.ones(self.train_data.shape[1], dtype=bool)
 
     def _prepare_features(self):
         train_features = []
@@ -386,22 +418,25 @@ class Trainer:
             ## moten
             if "moten" in self.feature_setting.join_sensory_feature_list:
                 sub_id = self.sub_setting.sub_id
+                key = f"motion_energy_{sub_id}"
+                if key not in sensory_train_features.keys():
+                    key = f"motion_energy_Naive"
                 train_features.append(
                     {
                         "name": "moten",
-                        "size": sensory_train_features[f"motion_energy_{sub_id}"].shape[
+                        "size": sensory_train_features[key].shape[
                             1
                         ],
-                        "feature": sensory_train_features[f"motion_energy_{sub_id}"],
+                        "feature": sensory_train_features[key],
                     }
                 )
                 test_features.append(
                     {
                         "name": "moten",
-                        "size": sensory_test_features[f"motion_energy_{sub_id}"][
+                        "size": sensory_test_features[key][
                             0
                         ].shape[1],
-                        "feature": sensory_test_features[f"motion_energy_{sub_id}"][0],
+                        "feature": sensory_test_features[key][0],
                     }
                 )
 
@@ -644,6 +679,9 @@ class Trainer:
         # train_pred_split = predict_in_batches(pipeline, train_feature)
         test_pred_split = predict_in_batches(pipeline, test_feature)
         test_pred = predict_in_batches(pipeline, test_feature, split=False)
+        
+        train_pred_split = predict_in_batches(pipeline, train_feature)
+        train_pred = predict_in_batches(pipeline, train_feature, split=False)
 
         # now do it in cpu
         print("computing scores...")
@@ -711,6 +749,17 @@ class Trainer:
             test_info=self.test_feature_info,
             train_info=self.train_feature_info, 
         )
+
+        # saving predicitions
+        if self.trainer_setting.save_predictions:
+            print("saving predictions...")
+            np.savez_compressed(
+                self.result_config.prediction_path,
+                test_pred_split=test_pred_split,
+                test_pred=test_pred,
+                train_pred_split=train_pred_split,
+                train_pred=train_pred,
+            )
 
         # clear cuda memory
         if self.trainer_setting.backend == "torch_cuda":

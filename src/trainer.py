@@ -138,7 +138,7 @@ class Trainer:
         self.result_config = result_config
 
     def _prepare_data(self):
-        if self.sub_setting.sub_fmri_train_test_path is None:
+        if self.sub_setting.sub_fmri_train_path is not None:
             train_data = load_dict(self.sub_setting.sub_fmri_train_path)
             test_data = load_dict(self.sub_setting.sub_fmri_test_path)
             # zscore data
@@ -168,7 +168,7 @@ class Trainer:
                 axis=0,
             )
             self.test_data = np.nan_to_num(test_data)
-        else:
+        elif self.sub_setting.sub_fmri_train_test_path is not None:
             if self.sub_setting.lang_code == "en":
                 train_strs = train_stories
                 test_strs = test_stories
@@ -189,6 +189,22 @@ class Trainer:
 
             self.train_data = np.nan_to_num(train_data)
             self.test_data = np.nan_to_num(test_data[0])
+        elif self.sub_setting.sub_fmri_train_test_en_zh_path is not None:
+            data = load_dict(self.sub_setting.sub_fmri_train_test_en_zh_path)
+            
+            if self.sub_setting.lang_code == "en":
+                train_data = data['train_en']
+                test_data = data['test_en']
+            else: # zh
+                train_data = data['train_zh']
+                test_data = data['test_zh']
+                
+            train_data = np.nan_to_num(train_data)
+            test_data = np.nan_to_num(test_data)
+            
+            # zscore
+            self.train_data = zscore(train_data, axis=0)
+            self.test_data = zscore(test_data, axis=0)
               
         # if stepwise, then regress out
         if self.trainer_setting.stepwise:
@@ -402,22 +418,25 @@ class Trainer:
             ## moten
             if "moten" in self.feature_setting.join_sensory_feature_list:
                 sub_id = self.sub_setting.sub_id
+                key = f"motion_energy_{sub_id}"
+                if key not in sensory_train_features.keys():
+                    key = f"motion_energy_Naive"
                 train_features.append(
                     {
                         "name": "moten",
-                        "size": sensory_train_features[f"motion_energy_{sub_id}"].shape[
+                        "size": sensory_train_features[key].shape[
                             1
                         ],
-                        "feature": sensory_train_features[f"motion_energy_{sub_id}"],
+                        "feature": sensory_train_features[key],
                     }
                 )
                 test_features.append(
                     {
                         "name": "moten",
-                        "size": sensory_test_features[f"motion_energy_{sub_id}"][
+                        "size": sensory_test_features[key][
                             0
                         ].shape[1],
-                        "feature": sensory_test_features[f"motion_energy_{sub_id}"][0],
+                        "feature": sensory_test_features[key][0],
                     }
                 )
 

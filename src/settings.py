@@ -91,7 +91,9 @@ class SubjectSetting(BaseSettings):
 
     sub_fmri_train_test_path: Optional[str] = None
 
-    sub_fmri_mapper_path: str = ""
+    sub_fmri_train_test_en_zh_path: Optional[str] = None
+
+    sub_fmri_mapper_path: Optional[str] = None
     
     lang_code: str = "en"
 

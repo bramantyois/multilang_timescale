@@ -274,7 +274,7 @@ def permutation_test(
         shuffled_scores = score_func(responses_test, predictions).detach().cpu().numpy()
         num_get_true_score[shuffled_scores >= true_scores] += 1
     pvalues = num_get_true_score / num_permutations
-    
+
     return pvalues
 
 
@@ -339,7 +339,7 @@ def put_values_on_mask(
     if ev_mask is None:
         ev_mask = np.ones(p_values.shape, dtype=bool)
 
-    whole_voxel = np.full(ev_mask.shape, np.nan)
+    whole_voxel = np.full(p_values.shape, np.nan)
 
     invalid_p_values = get_bh_invalid_voxels(p_values, alpha)
 
@@ -353,22 +353,25 @@ def put_values_on_mask(
     whole_voxel[ev_mask] = value_to_be_stored
 
     valid_voxels = np.where(~np.isnan(whole_voxel))
+
     return whole_voxel, valid_voxels
 
 
 # Response Cooking
-def cook_responses(responses: Dict,
-                   test_runs: List[str],
-                   train_runs: List[str] = None,
-                   trim_start_length: int = 10,
-                   trim_end_length: int = 10,
-                   do_zscore: bool = True,
-                   do_mean_centering: bool = False,
-                   multiseries: str = "separate",
-                   resample_proportion: float = None,
-                   trim_exceptions_dict: Dict = None,
-                   trs_to_remove_dict: Dict = None):
-    '''
+def cook_responses(
+    responses: Dict,
+    test_runs: List[str],
+    train_runs: List[str] = None,
+    trim_start_length: int = 10,
+    trim_end_length: int = 10,
+    do_zscore: bool = True,
+    do_mean_centering: bool = False,
+    multiseries: str = "separate",
+    resample_proportion: float = None,
+    trim_exceptions_dict: Dict = None,
+    trs_to_remove_dict: Dict = None,
+):
+    """
     args:
         responses: Dictionary of responses per run
         test_runs: run ids ([{textgrid_name}]) to use for test set.
@@ -383,21 +386,23 @@ def cook_responses(responses: Dict,
     returns:
         train_responses, test_responses: [num_trimmed_TRs x num_voxels] matrices of responses.
         resample_proportion: factor by which to resample data (original_tr / new_tr).
-    '''
+    """
     responses_by_run_name = copy.deepcopy(responses)
 
-    assert(trim_end_length >= 0)
+    assert trim_end_length >= 0
     # Does not work with Python negative indexing
     # if trim_end_length == 0:
     #     trim_end_length = -np.inf
 
     if train_runs is None:
-        #logger.info('train_runs not specified, will be taken from responses.keys()')
-        train_runs = [run for run in responses_by_run_name.keys() if run not in test_runs]
+        # logger.info('train_runs not specified, will be taken from responses.keys()')
+        train_runs = [
+            run for run in responses_by_run_name.keys() if run not in test_runs
+        ]
 
-    assert(len(set(train_runs).intersection(test_runs)) == 0)
+    assert len(set(train_runs).intersection(test_runs)) == 0
 
-    #logger.info(f'Responses will be returned using {multiseries}')
+    # logger.info(f'Responses will be returned using {multiseries}')
     for run_name in train_runs + test_runs:
         response = responses_by_run_name[run_name]
         # Handle repetitions of a run
@@ -414,7 +419,7 @@ def cook_responses(responses: Dict,
         # Remove TRs if applicable.
         if trs_to_remove_dict is not None:
             if run_name in trs_to_remove_dict:
-                #logger.info(f'Removing {len(trs_to_remove_dict[run_name])} TRs from {run_name} for responses')
+                # logger.info(f'Removing {len(trs_to_remove_dict[run_name])} TRs from {run_name} for responses')
                 response = np.delete(response, trs_to_remove_dict[run_name], axis=0)
 
         # Trim and zscore each run separately
@@ -423,16 +428,16 @@ def cook_responses(responses: Dict,
         if trim_exceptions_dict is not None:
             if run_name in list(trim_exceptions_dict.keys()):
                 trim_start, trim_end = trim_exceptions_dict[run_name]
-        #logger.info(f'Trim {run_name} with [{trim_start}:-{trim_end}]')
+        # logger.info(f'Trim {run_name} with [{trim_start}:-{trim_end}]')
 
         # If response has more than one repetition as in "multiseries == separate"
         if len(np.shape(response)) > 2:
-            response = np.array([res[trim_start: -trim_end] for res in response])
+            response = np.array([res[trim_start:-trim_end] for res in response])
         else:
             if trim_end == 0:
                 response = np.array(response[trim_start:])
             else:
-                response = np.array(response[trim_start: -trim_end])
+                response = np.array(response[trim_start:-trim_end])
 
         if do_zscore:
             # If response has more than one repetition as in "multiseries == separate"
@@ -444,18 +449,24 @@ def cook_responses(responses: Dict,
         responses_by_run_name[run_name] = response
 
     if resample_proportion:
-         responses_by_run_name = {key: resample(response, round(response.shape[0] * resample_proportion)) for key, response in responses_by_run_name.items()}
+        responses_by_run_name = {
+            key: resample(response, round(response.shape[0] * resample_proportion))
+            for key, response in responses_by_run_name.items()
+        }
 
-    train_responses = np.concatenate([responses_by_run_name[run] for run in train_runs], axis=0)
+    train_responses = np.concatenate(
+        [responses_by_run_name[run] for run in train_runs], axis=0
+    )
     # logger.info(f'Train runs: {train_runs}')
     # logger.info(f'Train responses: {np.shape(train_responses)}')
 
     # logger.info(f'Test runs: {test_runs}')
     test_responses = [responses_by_run_name[run] for run in test_runs]
     test_sizes = [np.shape(test_response) for test_response in test_responses]
-    #logger.info(f'Test responses (Each test run is an entry in the list): {test_sizes}')
+    # logger.info(f'Test responses (Each test run is an entry in the list): {test_sizes}')
 
     return train_responses, test_responses
+
 
 # def permutation_test(
 #     targets: np.ndarray,
@@ -524,7 +535,40 @@ def cook_responses(responses: Dict,
 #     return p_values, true_scores
 
 
-def read_result_meta(result_meta_dir: str):
+def get_surface_dict(
+    subject_id: str,
+    surfaces_json: str = ".temp/fmri/bling/surfaces.json",
+    description: str = "default",
+):
+    """
+    get dictinary of surface for a given subject_id and description
+    """
+    surfaces_dict = json.load(open(surfaces_json, "r"))
+
+    subject_surface = surfaces_dict[subject_id]
+    sel_subject_surface = None
+    for s in subject_surface:
+        if s["description"] == description:
+            sel_subject_surface = s
+            break
+    if not sel_subject_surface:
+        raise ValueError(f"Description {description} not found in surfaces_dict")
+
+    return {
+        "transform": sel_subject_surface["transform"],
+        "surface": sel_subject_surface["surface"],
+    }
+
+
+def read_result_meta(
+    result_meta_dir: str,
+    trainer_setting_path: str = None,
+    subject_setting_path: str = None,
+    feature_setting_path: str = None,
+):
+    """
+    read and scan result meta files.
+    """
     # scanning result meta json files and put it into a dataframe
     result_meta_files = os.listdir(result_meta_dir)
     result_meta_files = [f for f in result_meta_files if f.endswith(".json")]
@@ -541,10 +585,63 @@ def read_result_meta(result_meta_dir: str):
     result_meta_df["result_meta_file"] = [
         os.path.join(result_meta_dir, f) for f in result_meta_files
     ]
-    
-    result_meta_df.sort_values(["subject_config_path","trainer_config_path", "feature_config_path", ], inplace=True)
-    
-    return result_meta_df
+
+    # filter by trainer_setting_path
+    if trainer_setting_path:
+        result_meta_df = result_meta_df[
+            result_meta_df["trainer_config_path"] == trainer_setting_path
+        ]
+
+    # filter by subject_setting_path
+    if subject_setting_path:
+        result_meta_df = result_meta_df[
+            result_meta_df["subject_config_path"] == subject_setting_path
+        ]
+
+    # filter by feature_setting_path
+    if feature_setting_path:
+        result_meta_df = result_meta_df[
+            result_meta_df["feature_config_path"] == feature_setting_path
+        ]
+
+    result_meta_df.sort_values(
+        [
+            "subject_config_path",
+            "trainer_config_path",
+            "feature_config_path",
+        ],
+        inplace=True,
+    )
+
+    return result_meta_df.reset_index(drop=True)
+
+
+def delete_empty_result(result_meta_df: pd.DataFrame):
+    """
+    delete empty result from result_meta_df
+    """
+    for i in range(len(result_meta_df)):
+        # check id stats_path is a file
+        path = result_meta_df.loc[i, "stats_path"]
+        if not os.path.isfile(path):
+            print(f"deleting {i}")
+            try:
+                result_dir = result_meta_df.loc[i, "result_dir"]
+                os.system(f"rm -r {result_dir}")
+            except:
+                pass
+
+            # remove meta
+            try:
+                meta_path = result_meta_df.loc[i, "result_meta_file"]
+                os.system(f"rm {meta_path}")
+            except:
+                pass
+
+            # drop from meta_df
+            result_meta_df = result_meta_df.drop(i)
+
+    return result_meta_df.reset_index(drop=True, inplace=True)
 
 
 # Below are codes taken from git_address

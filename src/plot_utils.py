@@ -327,28 +327,37 @@ def plot_density(
     if result_type == "timescale":
         keyword = f"test_{result_metric}_selectivity_mask"
         p_val_keyword = f"test_p_values_{result_metric}_mask"
+        valid_range = (8, 256)
     else:
         keyword = f"test_joint_{result_metric}_score_mask"
         p_val_keyword = f"test_p_values_{result_metric}_mask"
+        valid_range = (0, 1)
 
     pred_acc_keyword = f"test_joint_{result_metric}_score_mask"
+    
+    
+    en_stat = en_stats[keyword]
+    zh_stat = zh_stats[keyword]
+    if result_type == "accuracy" and result_metric == "r2":
+        en_stat = np.sqrt(en_stat)
+        zh_stat = np.sqrt(zh_stat)
 
     if mask_type == "p-values":
         result_en, _ = put_values_on_mask(
-            en_stats[keyword],
+            en_stat,
             en_stats[p_val_keyword],
             ev_mask=None,
             alpha=alpha,
-            valid_range=(8, 256),
+            valid_range=valid_range,
         )
         en_stat = result_en[~np.isnan(result_en)]
 
         result_zh, _ = put_values_on_mask(
-            zh_stats[keyword],
+            zh_stat,
             zh_stats[p_val_keyword],
             ev_mask=None,
             alpha=alpha,
-            valid_range=(8, 256),
+            valid_range=valid_range,
         )
         zh_stat = result_zh[~np.isnan(result_zh)]
     else:
@@ -367,17 +376,17 @@ def plot_density(
         en_mask = en_mask > alpha
         zh_mask = zh_mask > alpha
         
-        result_en = en_stats[keyword]
+        result_en = en_stat.copy()
         result_en[~en_mask] = np.nan
         
-        result_zh = zh_stats[keyword]
+        result_zh = zh_stat.copy()
         result_zh[~zh_mask] = np.nan        
 
         en_valid_voxel = np.where(en_mask)[0]
         zh_valid_voxel = np.where(zh_mask)[0]
 
-        en_stat = en_stats[keyword][en_valid_voxel]
-        zh_stat = zh_stats[keyword][zh_valid_voxel]
+        en_stat = en_stat[en_valid_voxel]
+        zh_stat = zh_stat[zh_valid_voxel]
 
     diff = result_en - result_zh
     # drop nan

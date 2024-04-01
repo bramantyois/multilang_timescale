@@ -1,1 +1,0 @@
-All of files in this directory are copied from [encoding model tutorial](https://github.com/denizenslab/tutorials).

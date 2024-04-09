@@ -12,7 +12,7 @@ from sklearn.linear_model import LinearRegression
 
 import cortex
 from cortex import quickshow
-from cortex import Volume, VolumeRGB
+from cortex import Volume, VolumeRGB, Vertex
 from cortex.quickflat import make_figure
 
 from .utils import put_values_on_mask
@@ -30,6 +30,39 @@ def plot_timescale_flatmap_from_volume(
 
     make_figure(
         volume,
+        fig=ax,
+        with_colorbar=False,
+        with_curvature=True,
+        nanmean=True,
+        ax=ax,
+        **kwargs,
+    )
+
+    ax.axis("off")
+
+    # add vertical colorbar
+    cax = fig.add_axes([0.4, 0.9, 0.2, 0.05])
+    cbar = plt.colorbar(ax.images[0], cax=cax, orientation="horizontal")
+
+    # cbar = plt.colorbar(ax.images[0], cax=cax)
+    cbar.set_label("Number of Words")
+    cbar.set_ticks([8, 16, 32, 64, 128, 256])
+    cbar.set_ticklabels([8, 16, 32, 64, 128, 256])
+
+    return ax
+
+
+def plot_flatmap_from_vertex(
+    vertex: Vertex,
+    title: str = "Timescale Selectivity",
+    ax=None,
+    **kwargs,
+):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(20, 10))
+
+    make_figure(
+        vertex,
         fig=ax,
         with_colorbar=False,
         with_curvature=True,
@@ -334,8 +367,7 @@ def plot_density(
         valid_range = (0, 1)
 
     pred_acc_keyword = f"test_joint_{result_metric}_score_mask"
-    
-    
+
     en_stat = en_stats[keyword]
     zh_stat = zh_stats[keyword]
     if result_type == "accuracy" and result_metric == "r2":
@@ -363,7 +395,7 @@ def plot_density(
     else:
         en_mask = en_stats[pred_acc_keyword]
         zh_mask = zh_stats[pred_acc_keyword]
-    
+
         en_mask[en_mask < 0] = 0
         zh_mask[zh_mask < 0] = 0
         if result_metric == "r2":
@@ -375,12 +407,12 @@ def plot_density(
 
         en_mask = en_mask > alpha
         zh_mask = zh_mask > alpha
-        
+
         result_en = en_stat.copy()
         result_en[~en_mask] = np.nan
-        
+
         result_zh = zh_stat.copy()
-        result_zh[~zh_mask] = np.nan        
+        result_zh[~zh_mask] = np.nan
 
         en_valid_voxel = np.where(en_mask)[0]
         zh_valid_voxel = np.where(zh_mask)[0]

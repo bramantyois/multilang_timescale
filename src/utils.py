@@ -24,7 +24,7 @@ from scipy.signal import periodogram
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from scipy.stats import zscore
+from scipy.stats import zscore, ks_2samp
 
 from .configurations import timescales, timescale_ranges
 from .settings import ResultSetting
@@ -134,7 +134,6 @@ def compute_timescale_crosscorrelation(feature_set, periods, agg_method="mean"):
 
     return crosscorr
 
-
 # timescale selectivity
 def compute_timescale_selectivity(timescale_scores: np.ndarray) -> np.ndarray:
     """
@@ -166,7 +165,6 @@ def compute_timescale_selectivity(timescale_scores: np.ndarray) -> np.ndarray:
     )
 
     return weighted_scores.sum(axis=0)
-
 
 # permutation test
 def single_test(
@@ -278,6 +276,30 @@ def permutation_test(
     return pvalues
 
 
+def two_side_ks_test(
+    data_1: np.ndarray, 
+    data_2: np.ndarray, 
+    alpha: float=0.05)-> Tuple[float, bool]:
+    """
+    Compute the KS test between two data.
+
+    Parameters
+    ----------
+    data_1 : np.ndarray
+        Data 1.
+    data_2 : np.ndarray
+        Data 2.
+
+    Returns
+    -------
+    float
+        KS test value.
+    """
+    _, ks_pval = ks_2samp(data_1, data_2)
+    
+    return ks_pval, ks_pval>alpha
+    
+    
 # P-Values correction
 def get_bh_invalid_voxels(pvalues: np.ndarray, alpha: float):
     """
@@ -466,73 +488,6 @@ def cook_responses(
     # logger.info(f'Test responses (Each test run is an entry in the list): {test_sizes}')
 
     return train_responses, test_responses
-
-
-# def permutation_test(
-#     targets: np.ndarray,
-#     predictions: np.ndarray,
-#     score_func: callable,
-#     num_permutations: int = 1000,
-#     permutation_block_size: int = 10,
-#     initial_seed: int = 0,
-#     num_processes: int = 10,
-# ) -> Tuple[np.ndarray, np.ndarray]:
-#     """Compute the p-values of the given predictions using a permutation test.
-
-#     Parameters
-#     ----------
-#     targets : np.ndarray
-#         Ground truth.
-#     predictions : np.ndarray
-#         Predicted values.
-#     score_func : callable
-#         Callable function to compute the score.
-#     num_permutations : int, optional
-#         Number of permutations, by default 1000
-#     permutation_block_size : int, optional
-#         Block size, intended to keep correlation high, by default 10
-#     initial_seed : int, optional
-#         Initial random seed, by default 0
-#     num_processes : int, optional
-#         Number of processes to use, by default 10
-
-#     Returns
-#     -------
-#     pvalues : np.ndarray
-#         p-values.
-#     true_scores : np.ndarray
-#         True scores.
-#     """
-
-#     true_scores = score_func(targets, predictions)
-
-#     num_TRs = predictions.shape[0]
-#     blocks = np.array_split(np.arange(num_TRs), int(num_TRs / permutation_block_size))
-
-#     repeats = num_permutations // num_processes
-
-#     np.random.seed(initial_seed)
-#     seeds = np.random.randint(0, 1000000, num_processes)
-
-#     def single_test(repeats: int = 0, seed: int = 0):
-#         np.random.seed(seed)
-#         num_get_true_score = np.zeros(true_scores.shape)
-#         for i in range(repeats):
-#             np.random.shuffle(blocks)
-#             permutation_order = np.concatenate(blocks)
-#             shuffled_pred = predictions[permutation_order]
-#             shuffled_scores = score_func(targets, shuffled_pred)
-#             num_get_true_score[shuffled_scores >= true_scores] += 1
-#         return num_get_true_score
-
-#     with multiprocessing.Pool(num_processes) as pool:
-#         num_get_true_scores = pool.starmap(
-#             single_test, zip([repeats] * num_processes, seeds)
-#         )
-
-#     p_values = np.sum(num_get_true_scores, axis=0) / (repeats * num_processes)
-
-#     return p_values, true_scores
 
 
 def get_surface_dict(

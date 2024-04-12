@@ -59,7 +59,7 @@ def plot_flatmap_from_vertex(
     **kwargs,
 ):
     if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=(20, 10))
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
     make_figure(
         vertex,
@@ -375,23 +375,28 @@ def plot_density(
         zh_stat = np.sqrt(zh_stat)
 
     if mask_type == "p-values":
-        result_en, _ = put_values_on_mask(
+        result_en, en_valid_voxel = put_values_on_mask(
             en_stat,
             en_stats[p_val_keyword],
             ev_mask=None,
             alpha=alpha,
             valid_range=valid_range,
         )
-        en_stat = result_en[~np.isnan(result_en)]
+        #en_stat = result_en[~np.isnan(result_en)]
 
-        result_zh, _ = put_values_on_mask(
+        result_zh, zh_valid_voxel = put_values_on_mask(
             zh_stat,
             zh_stats[p_val_keyword],
             ev_mask=None,
             alpha=alpha,
             valid_range=valid_range,
         )
-        zh_stat = result_zh[~np.isnan(result_zh)]
+        #zh_stat = result_zh[~np.isnan(result_zh)]
+        
+        shared_voxel = np.intersect1d(en_valid_voxel, zh_valid_voxel)
+        
+        en_stat = en_stat[shared_voxel]
+        zh_stat = zh_stat[shared_voxel]
     else:
         en_mask = en_stats[pred_acc_keyword]
         zh_mask = zh_stats[pred_acc_keyword]
@@ -443,7 +448,7 @@ def plot_density(
     axs[1].legend()
 
     if result_type == "timescale":
-        axs[0].set_xlim(0, 260)
+        axs[0].set_xlim(0, 256)
         axs[1].set_xlim(-128, 128)
 
     plt.show()

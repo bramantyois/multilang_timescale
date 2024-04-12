@@ -1,9 +1,9 @@
 from typing import List, Literal, Optional
 
-from pydantic import BaseSettings
+from pydantic import BaseModel
 
 
-class FeatureSetting(BaseSettings):
+class FeatureSetting(BaseModel):
     timescale: List[str] = [
         "2_4_words",
         "4_8_words",
@@ -46,7 +46,7 @@ class FeatureSetting(BaseSettings):
     zscore_use_std: bool = True
 
 
-class TrainerSetting(BaseSettings):
+class TrainerSetting(BaseModel):
     # training related
     kfolds: int = 5
     alpha_min: float = -10
@@ -62,7 +62,7 @@ class TrainerSetting(BaseSettings):
     solver: str = "random_search"
 
     # re-fit related
-    use_fitted_alphas: bool = True
+    use_fitted_alphas: bool = False
     use_fitted_deltas: bool = True
 
     # mask
@@ -77,13 +77,14 @@ class TrainerSetting(BaseSettings):
     
     # to save predictions
     save_predictions: Optional[bool] = False
+    save_primal_coeff: Optional[bool] = False
 
     # stepwise regression related
     stepwise: Optional[bool] = False
     regress_out_path: Optional[str] = None
 
 
-class SubjectSetting(BaseSettings):
+class SubjectSetting(BaseModel):
     # subject related
     sub_id: str = ""
     sub_fmri_train_path: Optional[str] = None
@@ -108,7 +109,7 @@ class SubjectSetting(BaseSettings):
     ev_threshold: float = 1e-9
 
 
-class ResultSetting(BaseSettings):
+class ResultSetting(BaseModel):
     subject_config_path: str = ""
     feature_config_path: str = ""
     trainer_config_path: str = ""
@@ -117,7 +118,7 @@ class ResultSetting(BaseSettings):
     result_dir: str = ""
     hyperparam_path: str = ""
     stats_path: str = ""
-    
+    primal_coef_path: Optional[str] = None
     prediction_path: Optional[str] = None
     
     plot_dir: str = ""

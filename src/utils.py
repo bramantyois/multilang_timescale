@@ -134,6 +134,7 @@ def compute_timescale_crosscorrelation(feature_set, periods, agg_method="mean"):
 
     return crosscorr
 
+
 # timescale selectivity
 def compute_timescale_selectivity(timescale_scores: np.ndarray) -> np.ndarray:
     """
@@ -165,6 +166,7 @@ def compute_timescale_selectivity(timescale_scores: np.ndarray) -> np.ndarray:
     )
 
     return weighted_scores.sum(axis=0)
+
 
 # permutation test
 def single_test(
@@ -277,9 +279,8 @@ def permutation_test(
 
 
 def two_side_ks_test(
-    data_1: np.ndarray, 
-    data_2: np.ndarray, 
-    alpha: float=0.05)-> Tuple[float, bool]:
+    data_1: np.ndarray, data_2: np.ndarray, alpha: float = 0.05
+) -> Tuple[float, bool]:
     """
     Compute the KS test between two data.
 
@@ -296,10 +297,10 @@ def two_side_ks_test(
         KS test value.
     """
     _, ks_pval = ks_2samp(data_1, data_2)
-    
-    return ks_pval, ks_pval>alpha
-    
-    
+
+    return ks_pval, ks_pval > alpha
+
+
 # P-Values correction
 def get_bh_invalid_voxels(pvalues: np.ndarray, alpha: float):
     """
@@ -599,7 +600,35 @@ def delete_empty_result(result_meta_df: pd.DataFrame):
     return result_meta_df.reset_index(drop=True, inplace=True)
 
 
-# Below are codes taken from git_address
+# Primal Coefs utils
+def undelay_weights(signal, delays):
+    """Gets undelayed weights corresponding to features fit using delay_signal.
+    args:
+        signal: [(num_signal_dims * num_delays), num_voxels]
+    returns:
+        undelayed_signal: [num_delays, num_signal_dims, num_voxels]
+    """
+    if signal.ndim == 1:
+        signal = signal[..., None]
+    num_delayed_dims, num_voxels = signal.shape
+    num_signal_dims = num_delayed_dims // len(delays)
+    undelayed_signal = np.ones(
+        (len(delays), num_signal_dims, num_voxels), dtype=signal.dtype
+    )
+
+    for delay_index, delay in enumerate(delays):
+        begin, end = delay_index * num_signal_dims, (delay_index + 1) * num_signal_dims
+        undelayed_signal[delay_index, :, :] = signal[begin:end]
+    return undelayed_signal
+
+
+"""
+
+Below are codes taken from git_address
+
+"""
+
+
 # Visualizing on cortical surfaces using mapper files
 def load_sparse_array(fname, varname):
     """Load a numpy sparse array from an hdf file

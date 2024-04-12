@@ -118,6 +118,9 @@ class Trainer:
         result_config.prediction_path = os.path.join(result_dir, "predictions.npz")
         
         result_config.plot_dir = os.path.join(result_dir, "plots")
+        
+        if self.trainer_setting.save_primal_coeff:
+            result_config.primal_coef_path = os.path.join(result_dir,"primal_coef.npz")
 
         # creating dirs
         if not os.path.exists(result_dir):
@@ -759,6 +762,16 @@ class Trainer:
                 test_pred=test_pred,
                 train_pred_split=train_pred_split,
                 train_pred=train_pred,
+            )
+
+        # saving primal coefficients
+        if self.trainer_setting.save_primal_coeff:
+            xs_fit = columnn_kernelizer.get_X_fit()
+            primal_coeffs = model.get_primal_coef(xs_fit)
+            
+            np.savez_compressed(
+                self.result_config.primal_coef_path,
+                primal_coeffs = primal_coeffs
             )
 
         # clear cuda memory

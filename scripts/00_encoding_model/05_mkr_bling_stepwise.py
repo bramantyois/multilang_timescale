@@ -50,11 +50,10 @@ for subject_id in subject_ids:
     train_config_paths = [
         # ".temp/config/bling/train/stepwise/col_en_timescale.json",
         # ".temp/config/bling/train/stepwise/col_zh_timescale.json",
-        f".temp/config/bling/train/stepwise/{subject_id.lower()}_en_timescale.json",
+        f".temp/config/bling/train/stepwise/{subject_id.lower()}_en_timescale-save_primal.json",
         f".temp/config/bling/train/stepwise/{subject_id.lower()}_zh_timescale.json",
     ]
 
-    print("sub_config_paths", sub_config_paths)
 
     ## EN
     train(
@@ -64,9 +63,9 @@ for subject_id in subject_ids:
     )
 
     ## ZH 
-    train(
-        config_feature_path=feature_config_paths[1],
-        config_subject_path=sub_config_paths[1],
-        config_train_path=train_config_paths[1],
-    )
+    # train(
+    #     config_feature_path=feature_config_paths[1],
+    #     config_subject_path=sub_config_paths[1],
+    #     config_train_path=train_config_paths[1],
+    # )
 

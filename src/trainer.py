@@ -561,46 +561,6 @@ class Trainer:
             del pipeline
             torch.cuda.empty_cache()
 
-    # def compute_stats(self, prediction_split: np.ndarray, prediction: np.ndarray, target: np.ndarray force_cpu: bool=False):
-
-    #     r2_score_mask = r2_score_split(target, prediction_split)
-    #     r_score_mask = correlation_score_split(target, prediction_split)
-
-    #     r_timescale_selectivity = compute_timescale_selectivity(
-    #         r_score_mask[0:8]
-    #     )
-    #     r2_timescale_selectivity = compute_timescale_selectivity(
-    #         r2_score_mask[0:8]
-    #     )
-
-    #     if self.trainer_setting.fit_on_mask:
-    #         n_kernels = r2_score_mask.shape[0]
-    #         n_voxels = self.test_data.shape[1]
-
-    #         r2_split_scores = np.zeros((n_kernels, n_voxels))
-    #         r_split_scores = np.zeros((n_kernels, n_voxels))
-
-    #         r2_split_scores[:, self.mask] = backend.to_numpy(r2_score_mask)
-    #         r_split_scores[:, self.mask] = backend.to_numpy(r_score_mask)
-
-    #         r_selectivity = np.zeros(n_voxels)
-    #         r2_selectivity = np.zeros(n_voxels)
-
-    #         r_selectivity[self.mask] = backend.to_numpy(
-    #             r_timescale_selectivity
-    #         )
-    #         r2_selectivity[self.mask] = backend.to_numpy(
-    #             r2_timescale_selectivity
-    #         )
-    #     else:
-    #         test_r2_split_scores = test_r2_score_mask
-    #         test_r_split_scores = test_r_score_mask
-
-    #         test_r2_selectivity = test_r2_timescale_selectivity
-    #         test_r_selectivity = test_r_timescale_selectivity
-
-    #     test_r2_selectivity = np.power(2, test_r2_selectivity)
-    #     test_r_selectivity = np.power(2, test_r_selectivity)
 
     def refit_and_evaluate(self, force_cpu: bool = False, return_pred: bool = False):
         if force_cpu:

@@ -50,7 +50,8 @@ from src.configurations import (
     test_stories_zh,
 )
 
-# TODO: 
+
+# TODO:
 class Trainer:
     def __init__(
         self,
@@ -89,7 +90,7 @@ class Trainer:
         self._prepare_features()
 
         set_config(assume_finite=True)
-        
+
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"] = str(cuda_device_id)
 
@@ -116,11 +117,13 @@ class Trainer:
         result_config.hyperparam_path = os.path.join(result_dir, "hyperparams.npz")
         result_config.stats_path = os.path.join(result_dir, "stats.npz")
         result_config.prediction_path = os.path.join(result_dir, "predictions.npz")
-        
+
         result_config.plot_dir = os.path.join(result_dir, "plots")
-        
-        if self.trainer_setting.save_primal_coeff:
-            result_config.primal_coef_path = os.path.join(result_dir,"primal_coef.npz")
+
+        if self.trainer_setting.save_primal_weights:
+            result_config.primal_weights_path = os.path.join(
+                result_dir, "primal_coef.npz"
+            )
 
         # creating dirs
         if not os.path.exists(result_dir):
@@ -194,30 +197,30 @@ class Trainer:
             self.test_data = np.nan_to_num(test_data[0])
         elif self.sub_setting.sub_fmri_train_test_en_zh_path is not None:
             data = load_dict(self.sub_setting.sub_fmri_train_test_en_zh_path)
-            
+
             if self.sub_setting.lang_code == "en":
-                train_data = data['train_en']
-                test_data = data['test_en']
-            else: # zh
-                train_data = data['train_zh']
-                test_data = data['test_zh']
-                
+                train_data = data["train_en"]
+                test_data = data["test_en"]
+            else:  # zh
+                train_data = data["train_zh"]
+                test_data = data["test_zh"]
+
             train_data = np.nan_to_num(train_data)
             test_data = np.nan_to_num(test_data)
-            
+
             # zscore
             self.train_data = zscore(train_data, axis=0)
             self.test_data = zscore(test_data, axis=0)
-              
+
         # if stepwise, then regress out
         if self.trainer_setting.stepwise:
             print("regressing out...")
 
             regress_out = np.load(self.trainer_setting.regress_out_path)
-            
-            self.train_data = self.train_data - regress_out['train_pred']
-            self.test_data = self.test_data - regress_out['test_pred']
-            
+
+            self.train_data = self.train_data - regress_out["train_pred"]
+            self.test_data = self.test_data - regress_out["test_pred"]
+
             # zscore data
             self.train_data = zscore(self.train_data, axis=0)
             self.test_data = zscore(self.test_data, axis=0)
@@ -231,36 +234,54 @@ class Trainer:
 
         # lm-derived feature
         if self.feature_setting.lm_feature_type is None:
-            print('skipping lm feature')
-        else:    
+            print("skipping lm feature")
+        elif self.feature_setting.lm_feature_type == "fasttext":
+            fasttext_feature = np.load(
+                self.feature_setting.lm_feature_path, allow_pickle=True
+            )
+            train_features.append(
+                {
+                    "name": "fasttext",
+                    "size": fasttext_feature["train"].shape[1],
+                    "feature": np.nan_to_num(fasttext_feature["train"]),
+                }
+            )
+            test_features.append(
+                {
+                    "name": "fasttext",
+                    "size": fasttext_feature["test"].shape[1],
+                    "feature": np.squeeze(np.nan_to_num(fasttext_feature["test"])),
+                }
+            )
+        else:
             ## if feature is trimmed
             if (
                 self.feature_setting.is_lm_feature_trimmed is None
                 or self.feature_setting.is_lm_feature_trimmed is True
             ):
-                    lm_feature_train_test = np.load(
-                        self.feature_setting.lm_feature_path, allow_pickle=True
-                    )
+                lm_feature_train_test = np.load(
+                    self.feature_setting.lm_feature_path, allow_pickle=True
+                )
 
-                    for t in self.feature_setting.timescale:
-                        lm_features = lm_feature_train_test["train"].tolist()[t]
-                        train_features.append(
-                            {
-                                "name": f"lm_{t}",
-                                "size": lm_features.shape[1],
-                                "feature": np.nan_to_num(lm_features),
-                            }
-                        )
-                        ## test
-                        lm_features = lm_feature_train_test["test"].tolist()[t]
-                        test_features.append(
-                            {
-                                "name": f"lm_{t}",
-                                "size": lm_features.shape[1],
-                                "feature": np.nan_to_num(lm_features),
-                            }
-                        )
-            else: # feature is not trimmed
+                for t in self.feature_setting.timescale:
+                    lm_features = lm_feature_train_test["train"].tolist()[t]
+                    train_features.append(
+                        {
+                            "name": f"lm_{t}",
+                            "size": lm_features.shape[1],
+                            "feature": np.nan_to_num(lm_features),
+                        }
+                    )
+                    ## test
+                    lm_features = lm_feature_train_test["test"].tolist()[t]
+                    test_features.append(
+                        {
+                            "name": f"lm_{t}",
+                            "size": lm_features.shape[1],
+                            "feature": np.nan_to_num(lm_features),
+                        }
+                    )
+            else:  # feature is not trimmed
                 lm_feature_train_test = np.load(
                     self.feature_setting.lm_feature_path, allow_pickle=True
                 )
@@ -301,7 +322,7 @@ class Trainer:
                         }
                     )
 
-        # joint sensory-level features
+        # sensory-level features
         ## train
         if self.feature_setting.sensory_feature_train_paths is not None:
             sensory_level_train_feature = load_dict(
@@ -347,7 +368,7 @@ class Trainer:
                     }
                 )
 
-        # motion-energy features
+        ## motion-energy features
         if self.feature_setting.motion_energy_feature_paths is not None:
             moten = np.load(
                 self.feature_setting.motion_energy_feature_paths, allow_pickle=True
@@ -427,18 +448,14 @@ class Trainer:
                 train_features.append(
                     {
                         "name": "moten",
-                        "size": sensory_train_features[key].shape[
-                            1
-                        ],
+                        "size": sensory_train_features[key].shape[1],
                         "feature": sensory_train_features[key],
                     }
                 )
                 test_features.append(
                     {
                         "name": "moten",
-                        "size": sensory_test_features[key][
-                            0
-                        ].shape[1],
+                        "size": sensory_test_features[key][0].shape[1],
                         "feature": sensory_test_features[key][0],
                     }
                 )
@@ -561,7 +578,6 @@ class Trainer:
             del pipeline
             torch.cuda.empty_cache()
 
-
     def refit_and_evaluate(self, force_cpu: bool = False, return_pred: bool = False):
         if force_cpu:
             backend = set_backend("torch", on_error="warn")
@@ -642,7 +658,7 @@ class Trainer:
         # train_pred_split = predict_in_batches(pipeline, train_feature)
         test_pred_split = predict_in_batches(pipeline, test_feature)
         test_pred = predict_in_batches(pipeline, test_feature, split=False)
-        
+
         train_pred_split = predict_in_batches(pipeline, train_feature)
         train_pred = predict_in_batches(pipeline, train_feature, split=False)
 
@@ -663,7 +679,7 @@ class Trainer:
             permutation_text_func = permutation_test_mp
         else:
             permutation_text_func = permutation_test
-        
+
         print("computing permutation test...")
         test_p_values_r_mask = permutation_text_func(
             test_data, test_pred, score_func=correlation_score, num_permutations=2000
@@ -671,8 +687,8 @@ class Trainer:
         test_p_values_r2_mask = permutation_text_func(
             test_data, test_pred, score_func=r2_score, num_permutations=2000
         )
-        
-        # to numpy 
+
+        # to numpy
         test_r_score_mask = backend.to_numpy(test_r_score_mask)
         test_r2_score_mask = backend.to_numpy(test_r2_score_mask)
         test_joint_r_score_mask = backend.to_numpy(test_joint_r_score_mask)
@@ -681,7 +697,7 @@ class Trainer:
         test_p_values_r2_mask = backend.to_numpy(test_p_values_r2_mask)
 
         # compute timescale selectivity
-        if self.feature_setting.lm_feature_type is None:            
+        if self.feature_setting.lm_feature_type is None:
             print("skip timescale selectivity")
             test_r_selectivity_mask = 0
             test_r2_selectivity_mask = 0
@@ -710,7 +726,7 @@ class Trainer:
             test_r2_selectivity_mask=test_r2_selectivity_mask,
             mask=self.mask,
             test_info=self.test_feature_info,
-            train_info=self.train_feature_info, 
+            train_info=self.train_feature_info,
         )
 
         # saving predicitions
@@ -724,14 +740,13 @@ class Trainer:
                 train_pred=train_pred,
             )
 
-        # saving primal coefficients
-        if self.trainer_setting.save_primal_coeff:
+        # saving primal weights
+        if self.trainer_setting.save_primal_weights:
             xs_fit = columnn_kernelizer.get_X_fit()
-            primal_coeffs = model.get_primal_coef(xs_fit)
-            
+            primal_weights = model.get_primal_coef(xs_fit)
+
             np.savez_compressed(
-                self.result_config.primal_coef_path,
-                primal_coeffs = primal_coeffs
+                self.result_config.primal_weights_path, primal_weights=primal_weights
             )
 
         # clear cuda memory

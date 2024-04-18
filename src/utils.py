@@ -17,6 +17,9 @@ from typing import Dict, Optional, Tuple, List
 import numpy as np
 import pandas as pd
 
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
 import scipy.linalg
 import scipy.sparse
 from scipy.signal import periodogram
@@ -600,6 +603,31 @@ def delete_empty_result(result_meta_df: pd.DataFrame):
     return result_meta_df.reset_index(drop=True, inplace=True)
 
 
+def delete_result(result_meta_df: pd.DataFrame, indices: List[int]):
+    """
+    delete result from result_meta_df
+    """
+    for idx in indices:
+        print(f"deleting {idx}")
+        try:
+            result_dir = result_meta_df.loc[idx, "result_dir"]
+            os.system(f"rm -r {result_dir}")
+        except:
+            pass
+
+        # remove meta
+        try:
+            meta_path = result_meta_df.loc[idx, "result_meta_file"]
+            os.system(f"rm {meta_path}")
+        except:
+            pass
+
+        # drop from meta_df
+        result_meta_df = result_meta_df.drop(idx)
+
+    return result_meta_df.reset_index(drop=True, inplace=True)
+
+
 # Primal Coefs utils
 def undelay_weights(signal, delays):
     """Gets undelayed weights corresponding to features fit using delay_signal.
@@ -620,6 +648,47 @@ def undelay_weights(signal, delays):
         begin, end = delay_index * num_signal_dims, (delay_index + 1) * num_signal_dims
         undelayed_signal[delay_index, :, :] = signal[begin:end]
     return undelayed_signal
+
+
+def process_primal_weight(weights: np.ndarray, delay: int = 4):
+    """
+    Process primal weights
+    """
+    delays = np.arange(1, delay + 1)
+    primal_weights = undelay_weights(weights, delays).mean(0)
+    primal_weights = np.nan_to_num(primal_weights).T
+
+    return primal_weights
+
+
+def project_weights_to_pcs(weights: np.ndarray, n_components: int = 10):
+    """
+    Project weights to PCs
+    """
+    scaler = StandardScaler()
+    scaled = scaler.fit_transform(weights)
+
+    pca = PCA(n_components=n_components)
+    weights_pca = pca.fit_transform(scaled)
+
+    return weights_pca, pca
+
+
+def project_weights_to_rgb(weights: np.ndarray):
+    """
+    Project weights to RGB
+    """
+    weights_pca = project_weights_to_pcs(weights, n_components=3)[0]
+
+    # normalize and scale to 0-255
+    weights_rgb = (
+        (weights_pca - weights_pca.min())
+        / (weights_pca.max() - weights_pca.min())
+        * 255
+    )
+    weights_rgb = weights_rgb.astype(np.uint8)
+
+    return weights_rgb
 
 
 """

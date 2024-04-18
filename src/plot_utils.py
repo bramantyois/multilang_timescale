@@ -452,3 +452,51 @@ def plot_density(
         axs[1].set_xlim(-128, 128)
 
     plt.show()
+
+
+def plot_prediction_accuracy(
+    stats,
+    surface_dict: dict,
+    result_metric: Literal["r", "r2"] = "r2",   
+    alpha: float = 0.01,
+    vmin: float=0.0,
+    vmax: float=1.0,
+    ax=None,
+):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+    
+    keyword = f"test_joint_{result_metric}_score_mask"
+    p_val_keyword = f"test_p_values_{result_metric}_mask"
+    
+    pred_acc = stats[keyword]
+    if result_metric == "r2":
+        pred_acc = np.sqrt(pred_acc)
+        
+    stat, _ = put_values_on_mask(
+        pred_acc,
+        stats[p_val_keyword],
+        ev_mask=None,
+        alpha=alpha,
+        valid_range=(0, 1),
+    )
+    
+    vol = cortex.Volume(
+        stat,
+        surface_dict["surface"],
+        surface_dict["transform"],
+        vmin=vmin,
+        vmax=vmax,
+        cmap="inferno",
+    )
+    
+    make_figure(
+        vol,
+        fig=ax,
+        with_colorbar=True,
+        with_curvature=True,
+        nanmean=True,
+        ax=ax,
+    )
+    
+    return ax

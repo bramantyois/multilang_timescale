@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class FeatureSetting(BaseModel):
-    timescale: List[str] = [
+    timescale: Optional[List[str]] = [
         "2_4_words",
         "4_8_words",
         "8_16_words",
@@ -32,8 +32,8 @@ class FeatureSetting(BaseModel):
     sensory_feature_test_paths: Optional[str] = None
     sensory_features: Optional[List[str]] = None
 
-    sensory_feature_trim_start: int = 10
-    sensory_feature_trim_end: int = 5
+    sensory_feature_trim_start: Optional[int] = 10
+    sensory_feature_trim_end: Optional[int] = 5
 
     # motion energy feature
     motion_energy_feature_paths: Optional[str] = None
@@ -77,7 +77,7 @@ class TrainerSetting(BaseModel):
     
     # to save predictions
     save_predictions: Optional[bool] = False
-    save_primal_coeff: Optional[bool] = False
+    save_primal_weights: Optional[bool] = False
 
     # stepwise regression related
     stepwise: Optional[bool] = False
@@ -118,7 +118,7 @@ class ResultSetting(BaseModel):
     result_dir: str = ""
     hyperparam_path: str = ""
     stats_path: str = ""
-    primal_coef_path: Optional[str] = None
+    primal_weights_path: Optional[str] = None
     prediction_path: Optional[str] = None
     
     plot_dir: str = ""

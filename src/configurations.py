@@ -14,7 +14,7 @@ def config_plotting(context="paper"):
     else:
         sns.set_context("notebook", font_scale=1.5, rc={"lines.linewidth": 2.5})
 
-    sns.set_palette("Set3")
+    #sns.set_palette("Set3")
 
 train_stories = [
     "alternateithicatom",

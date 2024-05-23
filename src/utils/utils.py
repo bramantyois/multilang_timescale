@@ -371,7 +371,7 @@ def get_bh_invalid_voxels(pvalues: np.ndarray, alpha: float):
 def put_values_on_mask(
     value_to_be_stored: np.ndarray,
     p_values: np.ndarray,
-    ev_mask: Optional[np.ndarray],
+    ev_mask: Optional[np.ndarray]=None,
     alpha: float = 0.05,
     valid_range: Tuple[float, float] = (8, 256),
 ) -> Tuple[np.ndarray, np.ndarray]:
@@ -461,7 +461,8 @@ def get_valid_result(
     replace_by_nan: bool = True,
 ):
     """
-    Get valid results from stat_dict. invalid voxel determined by p-values will be filtered out/replace by np.nan
+    Get valid results from stat_dict. invalid voxel determined by p-values will be filtered out/replace by np.nan.
+    This function uses get_valid_voxel (permutation test) to determind the valid voxels.
 
     Parameters
     ----------

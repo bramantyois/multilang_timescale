@@ -35,7 +35,7 @@ figsize_dict = {
     "full": (6, 4),
     "half": (4, 3),
     "standard": (6, 4),
-    "long": (12, 4),
+    "2": (12, 4),
 }
 
 h_cbar_figsize_dict = {

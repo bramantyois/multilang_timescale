@@ -98,7 +98,8 @@ def plot_simple_flatmap(
 def plot_cluster_on_flatmap(
     cluster: np.ndarray,
     surface_dict: dict,
-    cmap: str = "colorblind",
+    cmap: str="tab10",
+    with_legend: bool = True,
     ax=None,
 ):
     if ax is None:
@@ -119,26 +120,26 @@ def plot_cluster_on_flatmap(
     )
     quickshow(label_vol, with_curvature=True, with_colorbar=False, nanmean=True, fig=ax)
 
-    # add label legend
-    custom_lines = [
-        Line2D(
-            [0],
-            [0],
-            markerfacecolor=plt.cm.get_cmap(cmap)(i),
-            color="w",
-            marker="o",
-            markersize=10,
-            linewidth=0,
+    if with_legend:
+        # add label legend
+        custom_lines = [
+            Line2D(
+                [0],
+                [0],
+                markerfacecolor=plt.cm.get_cmap(cmap)(i),
+                color="w",
+                marker="o",
+                markersize=10,
+                linewidth=0,
+            )
+            for i in range(vmin, vmax + 1)
+        ]
+        ax.legend(
+            custom_lines,
+            [f"{i}" for i in range(vmin, vmax + 1)],
+            loc="lower right",
+            title="Cluster",
         )
-        for i in range(vmin, vmax + 1)
-    ]
-
-    ax.legend(
-        custom_lines,
-        [f"{i}" for i in range(vmin, vmax + 1)],
-        loc="lower right",
-        title="Cluster",
-    )
 
     return ax
 

@@ -460,7 +460,7 @@ def get_valid_voxels(
         scores = stats_dict[score_keyword]
 
         if metric == "r2":
-            scores = np.maximum(np.sqrt(scores), 0)
+            scores = np.sqrt(np.maximum(scores, 0))
 
         valid_voxels = scores > score_threshold
 

@@ -35,6 +35,7 @@ figsize_dict = {
     "full": (6, 4),
     "half": (4, 3),
     "standard": (6, 4),
+    "standard_portrait": (4, 6),
     "2": (12, 4),
     "double_portrait": (8, 12),
     "a4_portrait": (8.27, 11.69),

@@ -36,7 +36,7 @@ figsize_dict = {
     "half": (4, 3),
     "standard": (6, 4),
     "standard_portrait": (4, 6),
-    "2": (12, 4),
+    "double_half": (12, 4),
     "double_portrait": (8, 12),
     "a4_portrait": (8.27, 11.69),
 }
@@ -55,8 +55,8 @@ v_cbar_figsize_dict = {
 
 id_to_label = {
     "COL": "P1",
-    "TYE": "P2",
-    "GFW": "P3",
+    "GFW": "P2",
+    "TYE": "P3",
 }
 
 def create_discrete_cmap(n_clusters: int, palette: str = "colorblind"):

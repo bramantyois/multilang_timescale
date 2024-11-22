@@ -31,11 +31,33 @@ def config_plotting(context="paper"):
 
 
 figsize_dict = {
-    "full": (10, 6),
+    "double": (12,8),
+    "full": (6, 4),
     "half": (4, 3),
     "standard": (6, 4),
+    "standard_portrait": (4, 6),
+    "double_half": (12, 4),
+    "double_portrait": (8, 12),
+    "a4_portrait": (8.27, 11.69),
 }
 
+h_cbar_figsize_dict = {
+    "full": (6, 0.5),
+    "half": (4, 0.5),
+    "standard": (4, 0.5),
+}
+
+v_cbar_figsize_dict = {
+    "full": (0.5, 6),
+    "half": (0.5, 4),
+    "standard": (0.5, 4),
+}
+
+id_to_label = {
+    "COL": "P1",
+    "GFW": "P2",
+    "TYE": "P3",
+}
 
 def create_discrete_cmap(n_clusters: int, palette: str = "colorblind"):
     colors = sns.color_palette(palette, n_clusters)
@@ -50,7 +72,7 @@ def plot_simple_flatmap(
     vmax: float = None,
     cmap: Optional[str] = None,
     cbar: bool = False,
-    curvature: bool = False,
+    curvature: bool = True,
     title: Optional[str] = None,
     ax=None,
 ):
@@ -84,7 +106,8 @@ def plot_simple_flatmap(
 def plot_cluster_on_flatmap(
     cluster: np.ndarray,
     surface_dict: dict,
-    cmap: str = "colorblind",
+    cmap: str="tab10",
+    with_legend: bool = True,
     ax=None,
 ):
     if ax is None:
@@ -105,35 +128,35 @@ def plot_cluster_on_flatmap(
     )
     quickshow(label_vol, with_curvature=True, with_colorbar=False, nanmean=True, fig=ax)
 
-    # add label legend
-    custom_lines = [
-        Line2D(
-            [0],
-            [0],
-            markerfacecolor=plt.cm.get_cmap(cmap)(i),
-            color="w",
-            marker="o",
-            markersize=10,
-            linewidth=0,
+    if with_legend:
+        # add label legend
+        custom_lines = [
+            Line2D(
+                [0],
+                [0],
+                markerfacecolor=plt.cm.get_cmap(cmap)(i),
+                color="w",
+                marker="o",
+                markersize=10,
+                linewidth=0,
+            )
+            for i in range(vmin, vmax + 1)
+        ]
+        ax.legend(
+            custom_lines,
+            [f"{i}" for i in range(vmin, vmax + 1)],
+            loc="lower right",
+            title="Cluster",
         )
-        for i in range(vmin, vmax + 1)
-    ]
-
-    ax.legend(
-        custom_lines,
-        [f"{i}" for i in range(vmin, vmax + 1)],
-        loc="lower right",
-        title="Cluster",
-    )
 
     return ax
 
 
 def plot_timescale_flatmap_from_volume(
     volume: Volume,
-    title: str = "Timescale Selectivity",
-    mask: np.ndarray = None,
     ax=None,
+    plot_cbar: bool = True,
+    nanmean: bool=False,
     **kwargs,
 ):
     if ax is None:
@@ -144,21 +167,22 @@ def plot_timescale_flatmap_from_volume(
         fig=ax,
         with_colorbar=False,
         with_curvature=True,
-        nanmean=True,
+        nanmean=nanmean,
         ax=ax,
         **kwargs,
     )
 
     ax.axis("off")
 
-    # add vertical colorbar
-    cax = fig.add_axes([0.4, 0.9, 0.2, 0.05])
-    cbar = plt.colorbar(ax.images[0], cax=cax, orientation="horizontal")
+    if plot_cbar:
+        # add vertical colorbar
+        cax = fig.add_axes([0.4, 0.9, 0.2, 0.05])
+        cbar = plt.colorbar(ax.images[0], cax=cax, orientation="horizontal")
 
-    # cbar = plt.colorbar(ax.images[0], cax=cax)
-    cbar.set_label("Number of Words")
-    cbar.set_ticks([8, 16, 32, 64, 128, 256])
-    cbar.set_ticklabels([8, 16, 32, 64, 128, 256])
+        # cbar = plt.colorbar(ax.images[0], cax=cax)
+        cbar.set_label("Number of Words")
+        cbar.set_ticks([8, 16, 32, 64, 128, 256])
+        cbar.set_ticklabels([8, 16, 32, 64, 128, 256])
 
     return ax
 
@@ -196,15 +220,13 @@ def plot_flatmap_from_vertex(
     return ax
 
 
-def get_timescale_rgb(
-    timescale: np.ndarray,
+def get_timescale_scalar_mappable(
     vmin: int = 8,
     vmax: int = 256,
     cmap: str = "rainbow",
     is_log: bool = False,
     is_symmetric: bool = False,
 ):
-    """get timescale rgb value from timescale value"""
     if is_log:
         if is_symmetric:
             norm = SymLogNorm(vmin=vmin, vmax=vmax, linthresh=0.01)
@@ -215,6 +237,26 @@ def get_timescale_rgb(
 
     scalar_mappable = ScalarMappable(norm=norm, cmap=cmap)
     scalar_mappable.set_array([])
+
+    return scalar_mappable
+
+
+def get_timescale_rgb(
+    timescale: np.ndarray,
+    vmin: int = 8,
+    vmax: int = 256,
+    cmap: str = "rainbow",
+    is_log: bool = False,
+    is_symmetric: bool = False,
+):
+    """get timescale rgb value from timescale value"""
+    scalar_mappable = get_timescale_scalar_mappable(
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+        is_log=is_log,
+        is_symmetric=is_symmetric,
+    )
 
     rgb = scalar_mappable.to_rgba(np.nan_to_num(timescale))
     rgb = rgb[:, :3]
@@ -253,6 +295,7 @@ def plot_volume_rgb(
     is_r2: bool = True,
     is_timescale: bool = True,
     mask: np.ndarray = None,
+    plot_cbar: bool = True,
     ax=None,
     **kwargs,
 ):
@@ -294,14 +337,75 @@ def plot_volume_rgb(
         fig=ax,
         **kwargs,
     )
+    
     # add vertical colorbar
-    cax = fig.add_axes([0.4, 0.9, 0.2, 0.05])
-    cbar = plt.colorbar(scalar_mappable, cax=cax, orientation="horizontal")
+    
+    if plot_cbar:
+        cax = fig.add_axes([0.4, 0.9, 0.2, 0.05])
+        cbar = plt.colorbar(scalar_mappable, cax=cax, orientation="horizontal")
 
-    if is_timescale:
-        cbar.set_label("Number of Words")
-        cbar.set_ticks([8, 16, 32, 64, 128, 256])
-        cbar.set_ticklabels([8, 16, 32, 64, 128, 256])
+        if is_timescale:
+            cbar.set_label("Number of Words")
+            cbar.set_ticks([8, 16, 32, 64, 128, 256])
+            cbar.set_ticklabels([8, 16, 32, 64, 128, 256])
+
+    return ax
+
+
+def plot_timescale_selectivity(
+    timescale: np.ndarray,
+    alpha_mask: np.ndarray,
+    surface_dict: dict,
+    vmin: int = 8,
+    vmax: int = 256,
+    cmap: str = "rainbow",
+    is_log: bool = False,
+    is_symmetric: bool = False,
+    ax=None,
+    nanmean: bool = True,   
+    **kwargs,
+):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+
+    rgb, scalar_mappable = get_timescale_rgb(
+        timescale,
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+        is_log=is_log,
+        is_symmetric=is_symmetric,
+    )
+
+    red = Volume(rgb[:, 0], surface_dict["surface"], surface_dict["transform"])
+    green = Volume(rgb[:, 1], surface_dict["surface"], surface_dict["transform"])
+    blue = Volume(rgb[:, 2], surface_dict["surface"], surface_dict["transform"])
+
+    vol_rgb = VolumeRGB(
+        red,
+        green,
+        blue,
+        surface_dict["surface"],
+        surface_dict["transform"],
+        alpha=alpha_mask,
+    )
+
+    quickshow(
+        vol_rgb,
+        with_curvature=True,
+        with_colorbar=False,
+        nanmean=nanmean,
+        fig=ax,
+        **kwargs,
+    )
+    # add vertical colorbar
+    # cax = fig.add_axes([0.4, 0.9, 0.2, 0.05])
+    # cbar = plt.colorbar(scalar_mappable, cax=cax, orientation="horizontal")
+
+    # if is_timescale:
+    #     cbar.set_label("Number of Words")
+    #     cbar.set_ticks([8, 16, 32, 64, 128, 256])
+    #     cbar.set_ticklabels([8, 16, 32, 64, 128, 256])
 
     return ax
 

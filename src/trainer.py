@@ -33,7 +33,7 @@ from voxelwise_tutorials.viz import (
 
 import matplotlib.pyplot as plt
 
-from src.utils import (
+from src.utils.utils import (
     load_dict,
     compute_timescale_selectivity,
     permutation_test,

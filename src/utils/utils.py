@@ -371,7 +371,7 @@ def get_bh_invalid_voxels(pvalues: np.ndarray, alpha: float):
 def put_values_on_mask(
     value_to_be_stored: np.ndarray,
     p_values: np.ndarray,
-    ev_mask: Optional[np.ndarray],
+    ev_mask: Optional[np.ndarray] = None,
     alpha: float = 0.05,
     valid_range: Tuple[float, float] = (8, 256),
 ) -> Tuple[np.ndarray, np.ndarray]:
@@ -421,7 +421,8 @@ def put_values_on_mask(
 def get_valid_voxels(
     stats_dict: Dict,
     metric: Literal["r2", "r"] = "r2",
-    alpha: float = 0.05,
+    alpha: Optional[float] = 0.05,
+    score_threshold: Optional[float] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     get valid voxels from stats_dict.
@@ -434,23 +435,36 @@ def get_valid_voxels(
         Metric to be used.
     alpha : float, optional
         Alpha value, by default 0.05
+    score_threshold : float, optional
+        Score threshold, by default None
 
     Returns
     -------
     Tuple[np.ndarray, np.ndarray]
         binary mask and indices of valid voxels.
     """
-    p_val_keyword = f"test_p_values_{metric}_mask"
-    p_values = stats_dict[p_val_keyword]
+    if score_threshold is None:
+        p_val_keyword = f"test_p_values_{metric}_mask"
+        p_values = stats_dict[p_val_keyword]
 
-    whole_voxels = np.full(p_values.shape, True, dtype=bool)
-    invalid_voxels = get_bh_invalid_voxels(p_values, alpha)
+        whole_voxels = np.full(p_values.shape, True, dtype=bool)
+        invalid_voxels = get_bh_invalid_voxels(p_values, alpha)
 
-    whole_voxels[invalid_voxels] = False
+        whole_voxels[invalid_voxels] = False
 
-    indices = np.where(whole_voxels)[0]
+        indices = np.where(whole_voxels)[0]
 
-    return whole_voxels, indices
+        return whole_voxels, indices
+    else:
+        score_keyword = f"test_joint_{metric}_score_mask"
+        scores = stats_dict[score_keyword]
+
+        if metric == "r2":
+            scores = np.sqrt(np.maximum(scores, 0))
+
+        valid_voxels = scores > score_threshold
+
+        return valid_voxels, np.where(valid_voxels)[0]
 
 
 def get_valid_result(
@@ -461,7 +475,8 @@ def get_valid_result(
     replace_by_nan: bool = True,
 ):
     """
-    Get valid results from stat_dict. invalid voxel determined by p-values will be filtered out/replace by np.nan
+    Get valid results from stat_dict. invalid voxel determined by p-values will be filtered out/replace by np.nan.
+    This function uses get_valid_voxel (permutation test) to determind the valid voxels.
 
     Parameters
     ----------
@@ -486,7 +501,7 @@ def get_valid_result(
         values[~mask] = np.nan
     else:
         values = values[valid_indices]
-    
+
     return values
 
 
@@ -641,8 +656,6 @@ def get_surface_dict(
         "transform": sel_subject_surface["transform"],
         "surface": sel_subject_surface["surface"],
     }
-
-
 
 
 """
